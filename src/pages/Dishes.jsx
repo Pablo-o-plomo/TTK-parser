@@ -1,8 +1,8 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Tag, TogBtn, PgBtn, SEL_ST } from '../components/ui.jsx'
 import { Ico } from '../components/icons.jsx'
 import DishModal from '../components/DishModal.jsx'
-import { REST_COLOR, REST_BG, CAT_ICONS, STA_ICONS, CAT_STATS, STA_STATS } from '../constants.js'
+import { REST_COLOR, REST_BG, CAT_ICONS, STA_ICONS } from '../constants.js'
 
 const PAGE_SIZE = 60
 
@@ -22,9 +22,9 @@ function DishCard({ d, onClick }) {
         {d.hasErrors && <span style={{ color:'#ef4444', flexShrink:0 }}>{Ico.warn}</span>}
       </div>
       <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:7 }}>
-        <Tag color={REST_COLOR[d.restaurant]} bg={REST_BG[d.restaurant]} xs>{d.restaurant}</Tag>
-        <Tag color="#374151" bg="#f3f4f6" xs>{CAT_ICONS[d.category]} {d.category}</Tag>
-        <Tag color="#0891b2" bg="#e0f2fe" xs>{STA_ICONS[d.station]} {d.station}</Tag>
+        <Tag color={REST_COLOR[d.restaurant] || '#6366f1'} bg={REST_BG[d.restaurant] || '#eef2ff'} xs>{d.restaurant}</Tag>
+        <Tag color="#374151" bg="#f3f4f6" xs>{CAT_ICONS[d.category] || '🍴'} {d.category}</Tag>
+        <Tag color="#0891b2" bg="#e0f2fe" xs>{STA_ICONS[d.station] || '🏷️'} {d.station}</Tag>
       </div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div style={{ fontSize:10.5, color:'#9ca3af' }}>№{d.ttk} · {d.date}</div>
@@ -40,7 +40,7 @@ function DishCard({ d, onClick }) {
   )
 }
 
-export default function Dishes({ dishes }) {
+export default function Dishes({ dishes, selectedRestaurant = 'all' }) {
   const [q, setQ]               = useState('')
   const [cat, setCat]           = useState('all')
   const [rest, setRest]         = useState('all')
@@ -51,9 +51,31 @@ export default function Dishes({ dishes }) {
   const [modal, setModal]       = useState(null)
   const reset = useCallback(() => setPage(0), [])
 
+  useEffect(() => {
+    setRest('all')
+    setPage(0)
+  }, [selectedRestaurant])
+
+  const optionStats = useMemo(() => {
+    const stats = { restaurants: {}, categories: {}, stations: {} }
+    dishes.forEach(d => {
+      stats.restaurants[d.restaurant] = (stats.restaurants[d.restaurant] || 0) + 1
+      stats.categories[d.category] = (stats.categories[d.category] || 0) + 1
+      stats.stations[d.station] = (stats.stations[d.station] || 0) + 1
+    })
+    return stats
+  }, [dishes])
+
   const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase()
     let r = dishes
-    if (q)           r = r.filter(d => d.name.toLowerCase().includes(q.toLowerCase()) || d.ttk.includes(q))
+    if (query) {
+      r = r.filter(d =>
+        d.name.toLowerCase().includes(query) ||
+        d.ttk.toLowerCase().includes(query) ||
+        d.restaurant.toLowerCase().includes(query)
+      )
+    }
     if (cat !== 'all')  r = r.filter(d => d.category === cat)
     if (rest !== 'all') r = r.filter(d => d.restaurant === rest)
     if (sta !== 'all')  r = r.filter(d => d.station === sta)
@@ -77,26 +99,26 @@ export default function Dishes({ dishes }) {
         </div>
         <select value={cat} onChange={e => { setCat(e.target.value); reset() }} style={SEL_ST}>
           <option value="all">Все категории</option>
-          {Object.entries(CAT_STATS).sort((a,b) => b[1].total - a[1].total).map(([c, v]) =>
-            <option key={c} value={c}>{CAT_ICONS[c]} {c} ({v.total})</option>)}
+          {Object.entries(optionStats.categories).sort((a,b) => b[1] - a[1]).map(([c, total]) =>
+            <option key={c} value={c}>{CAT_ICONS[c] || '🍴'} {c} ({total})</option>)}
         </select>
         <select value={rest} onChange={e => { setRest(e.target.value); reset() }} style={SEL_ST}>
           <option value="all">Все рестораны</option>
-          {['РОСТОВ','САХАЛИН','СОЧИ'].map(r => <option key={r} value={r}>{r}</option>)}
+          {Object.entries(optionStats.restaurants).sort((a,b) => b[1] - a[1]).map(([r, total]) => <option key={r} value={r}>{r} ({total})</option>)}
         </select>
         <select value={sta} onChange={e => { setSta(e.target.value); reset() }} style={SEL_ST}>
           <option value="all">Все станции</option>
-          {Object.keys(STA_STATS).map(s => <option key={s} value={s}>{STA_ICONS[s]} {s}</option>)}
+          {Object.entries(optionStats.stations).sort((a,b) => b[1] - a[1]).map(([s, total]) => <option key={s} value={s}>{STA_ICONS[s] || '🏷️'} {s} ({total})</option>)}
         </select>
         <TogBtn active={errOnly} onClick={() => { setErrOnly(v => !v); reset() }} color="#ef4444">⚠ Ошибки</TogBtn>
         <TogBtn active={sharedOnly} onClick={() => { setShared(v => !v); reset() }} color="#7c3aed">↔ Кросс-сеть</TogBtn>
       </div>
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:12 }}>
-        Найдено: <strong style={{ color:'#374151' }}>{filtered.length}</strong> из {dishes.length} ТТК
+        {selectedRestaurant === 'all' ? 'Все рестораны' : selectedRestaurant}: <strong style={{ color:'#374151' }}>{filtered.length}</strong> из {dishes.length} ТТК
         {totalPages > 1 && ` · стр. ${page + 1} / ${totalPages}`}
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))', gap:10 }}>
-        {paged.map(d => <DishCard key={d.id} d={d} onClick={setModal} />)}
+        {paged.map(d => <DishCard key={`${d.restaurant}-${d.id}`} d={d} onClick={setModal} />)}
       </div>
       {totalPages > 1 && (
         <div style={{ display:'flex', justifyContent:'center', gap:6, marginTop:20, flexWrap:'wrap' }}>
