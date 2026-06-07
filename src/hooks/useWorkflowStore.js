@@ -7,6 +7,7 @@ const initialState = {
   tasks: [],
   comments: [],
   manualLinks: [],
+  uploads: [],
 }
 
 function readState() {
@@ -91,11 +92,24 @@ export function useWorkflowStore() {
     }))
   }, [persist])
 
+  const addUpload = useCallback(upload => {
+    const now = new Date().toISOString()
+    const record = {
+      id: `upload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: now,
+      status: upload.mode === 'table' ? 'needs_mapping' : 'uploaded',
+      ...upload,
+    }
+    persist(current => ({ ...current, uploads: [record, ...(current.uploads || [])] }))
+    return record
+  }, [persist])
+
   return {
     ...state,
     createTask,
     submitTask,
     updateTaskStatus,
     addManualLink,
+    addUpload,
   }
 }

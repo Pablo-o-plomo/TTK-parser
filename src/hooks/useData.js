@@ -81,6 +81,7 @@ export function normalizeRostovDish(row, fallbackRestaurant = 'Ростов', in
     pfPhotos: [],
     approvalStatus: 'new',
     extras: {},
+    sourceFile: 'dishes.json',
     raw: row,
   }
 }
@@ -126,6 +127,7 @@ export function normalizePetrovkaDish(row, fallbackRestaurant = 'Петровк�
     pfPhotos,
     approvalStatus: asText(firstDefined(row.approvalStatus, row.status), 'new'),
     extras,
+    sourceFile: asText(firstDefined(row.sourceFile, row.source, row.file), 'petrovka_ttk.json'),
     raw: row,
   }
 }

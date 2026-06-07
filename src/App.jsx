@@ -20,6 +20,7 @@ import Dishes      from './pages/Dishes.jsx'
 import Comparison  from './pages/Comparison.jsx'
 import ReviewTasks from './pages/ReviewTasks.jsx'
 import TaskSubmission from './pages/TaskSubmission.jsx'
+import Uploads from './pages/Uploads.jsx'
 import PF          from './pages/PF.jsx'
 import Stations    from './pages/Stations.jsx'
 import Photos      from './pages/Photos.jsx'
@@ -31,6 +32,7 @@ const NAV_ICONS = {
   dishes:      BookIcon,
   comparison:  ClipIcon,
   review:      GraduationIcon,
+  uploads:     ClipIcon,
   pf:          BowlIcon,
   stations:    FireIcon,
   photos:      CameraIcon,
@@ -48,7 +50,7 @@ export default function App() {
   const [section, setSection] = useState('dashboard')
   const [selectedRestaurant, setSelectedRestaurant] = useState('all')
   const [referenceRestaurant, setReferenceRestaurant] = useState('Петровка')
-  const { tasks, manualLinks, createTask, submitTask, updateTaskStatus, addManualLink } = useWorkflowStore()
+  const { tasks, manualLinks, uploads, createTask, submitTask, updateTaskStatus, addManualLink, addUpload } = useWorkflowStore()
   const { dishes, pf, disc, loading, error } = useData()
 
   const restaurantCounts = useMemo(() => dishes.reduce((acc, dish) => {
@@ -162,6 +164,7 @@ export default function App() {
           {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
           {section === 'comparison'  && <Comparison   dishes={dishes} tasks={tasks} manualLinks={manualLinks} addManualLink={addManualLink} createTask={createTask} referenceRestaurant={referenceRestaurant} setReferenceRestaurant={setReferenceRestaurant} />}
           {section === 'review'      && <ReviewTasks  tasks={tasks} updateTaskStatus={updateTaskStatus} />}
+          {section === 'uploads'     && <Uploads      uploads={uploads} addUpload={addUpload} />}
           {section === 'pf'          && <PF           pf={pf} />}
           {section === 'stations'    && <Stations     dishes={visibleDishes} />}
           {section === 'photos'      && <Photos       dishes={visibleDishes} />}

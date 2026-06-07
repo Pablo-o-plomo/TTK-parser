@@ -92,6 +92,7 @@ export const NAV_ITEMS = [
   { id: "dishes",       label: "Блюда",          badge: 1568,            badgeRed: false },
   { id: "comparison",   label: "Сверка ТТК",     badge: null,            badgeRed: false },
   { id: "review",       label: "Проверка заданий", badge: null,          badgeRed: false },
+  { id: "uploads",     label: "Загрузки ТТК",   badge: null,            badgeRed: false },
   { id: "pf",           label: "Полуфабрикаты",  badge: null,            badgeRed: false },
   { id: "stations",     label: "Станции",        badge: null,            badgeRed: false },
   { id: "photos",       label: "Фотоэталоны",    badge: null,            badgeRed: false },

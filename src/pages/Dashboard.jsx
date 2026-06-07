@@ -114,6 +114,7 @@ export default function Dashboard({ dishes, pf, tasks = [], go }) {
             { l:'Все ТТК',        i:'📋', s:'dishes',      c:'#6366f1' },
             { l:'Сверка ТТК',     i:'⚖️', s:'comparison', c:'#6366f1' },
             { l:'Проверка заданий', i:'🔎', s:'review',      c:'#7c3aed' },
+            { l:'Загрузить ТТК',   i:'📤', s:'uploads',     c:'#0891b2' },
             { l:'Аудит ошибок',   i:'⚠️', s:'audit',       c:'#ef4444' },
             { l:'Список п/ф',     i:'📦', s:'pf',          c:'#7c3aed' },
             { l:'Станции',        i:'🔥', s:'stations',    c:'#0891b2' },
