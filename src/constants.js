@@ -89,6 +89,7 @@ export const PHOTO_SLOTS = [
 // ─── НАВИГАЦИЯ ────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
   { id: "list",     label: "Эталонные ТТК", badge: null, badgeRed: false },
-  { id: "create",   label: "Создать ТТК",   badge: null, badgeRed: false },
-  { id: "settings", label: "Настройки",     badge: null, badgeRed: false },
+  { id: "create",        label: "Создать ТТК",   badge: null, badgeRed: false },
+  { id: "nomenclature",  label: "Номенклатура",  badge: null, badgeRed: false },
+  { id: "settings",      label: "Настройки",     badge: null, badgeRed: false },
 ];

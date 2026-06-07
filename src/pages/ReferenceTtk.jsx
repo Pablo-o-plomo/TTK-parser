@@ -151,8 +151,9 @@ function TextField({ label, value, onChange }) {
   return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><input value={value || ''} onChange={e => onChange(e.target.value)} style={INPUT} /></label>
 }
 
-export function ReferenceTtkForm({ initial, onCancel, onSave }) {
+export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatureItem, onCancel, onSave }) {
   const [form, setForm] = useState(() => initial || createEmptyReferenceTtk())
+  const nomenclatureByName = useMemo(() => new Map(nomenclature.map(item => [item.name.trim().toLowerCase(), item])), [nomenclature])
 
   function update(field, value) {
     setForm(current => ({ ...current, [field]: value }))
@@ -160,6 +161,39 @@ export function ReferenceTtkForm({ initial, onCancel, onSave }) {
 
   function updateRow(index, field, value) {
     setForm(current => ({ ...current, rows: current.rows.map((row, i) => i === index ? { ...row, [field]: value } : row) }))
+  }
+
+  function selectNomenclature(index, name) {
+    const item = nomenclatureByName.get(name.trim().toLowerCase())
+    if (!item) {
+      updateRow(index, 'name', name)
+      return
+    }
+
+    setForm(current => ({
+      ...current,
+      rows: current.rows.map((row, i) => i === index ? {
+        ...row,
+        name: item.name,
+        semifinished: item.type === 'Полуфабрикат' || item.composition ? item.composition : row.semifinished,
+        description: item.cookingMethod || item.description || row.description,
+      } : row),
+    }))
+  }
+
+  function addRowToNomenclature(row) {
+    if (!row.name?.trim() || !onSaveNomenclatureItem) return
+    const unit = row.qty?.replace(/[0-9.,\s]/g, '').trim() || 'г'
+    onSaveNomenclatureItem({
+      name: row.name.trim(),
+      type: row.semifinished ? 'Полуфабрикат' : 'Товар',
+      category: '',
+      unit,
+      description: row.description || '',
+      composition: row.semifinished || '',
+      cookingMethod: row.description || '',
+      output: row.qty || '',
+    })
   }
 
   return (
@@ -190,6 +224,7 @@ export function ReferenceTtkForm({ initial, onCancel, onSave }) {
       </section>
 
       <section style={SECTION}>
+        <datalist id="nomenclature-options">{nomenclature.map(item => <option key={item.id} value={item.name}>{item.type} · {item.unit}</option>)}</datalist>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:12 }}>
           <div>
             <h2 style={{ margin:'0 0 4px' }}>Строки ТТК</h2>
@@ -202,8 +237,11 @@ export function ReferenceTtkForm({ initial, onCancel, onSave }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead><tr>{['Кол-во','Наименование','П/ф состав','Описание',''].map(h => <th key={h} style={{ textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead>
             <tbody>{(form.rows || []).map((row, index) => <tr key={index}>
-              <td style={TD}><input placeholder="100 г" value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td>
-              <td style={TD}><input placeholder="Брауни п/ф" value={row.name} onChange={e => updateRow(index, 'name', e.target.value)} style={INPUT} /></td>
+              <td style={TD}><input placeholder={nomenclatureByName.get(row.name?.trim().toLowerCase())?.unit ? `100 ${nomenclatureByName.get(row.name.trim().toLowerCase()).unit}` : '100 г'} value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td>
+              <td style={TD}>
+                <input list="nomenclature-options" placeholder="Брауни п/ф" value={row.name} onChange={e => selectNomenclature(index, e.target.value)} style={INPUT} />
+                {row.name && !nomenclatureByName.has(row.name.trim().toLowerCase()) && <button type="button" onClick={() => addRowToNomenclature(row)} style={{ ...SEL_ST, marginTop:6, fontSize:11 }}>Добавить в номенклатуру</button>}
+              </td>
               <td style={TD}><textarea placeholder="яйцо, сахар, шоколад..." value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA_IN_TABLE} /></td>
               <td style={TD}><textarea placeholder="Замешать, выпекать..." value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA_IN_TABLE} /></td>
               <td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>×</button></td>

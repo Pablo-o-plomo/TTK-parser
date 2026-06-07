@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Tag } from './components/ui.jsx'
-import { BookIcon, ClipIcon, GraduationIcon } from './components/icons.jsx'
+import { BookIcon, ClipIcon, GraduationIcon, GridIcon } from './components/icons.jsx'
 import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
+import { useNomenclatureStore } from './hooks/useNomenclature.js'
 import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
+import { NomenclaturePage } from './pages/Nomenclature.jsx'
 
 const NAV_ITEMS = [
   { id: 'list', label: 'Эталонные ТТК', icon: BookIcon },
   { id: 'create', label: 'Создать ТТК', icon: ClipIcon },
+  { id: 'nomenclature', label: 'Номенклатура', icon: GridIcon },
   { id: 'settings', label: 'Настройки', icon: GraduationIcon },
 ]
 
@@ -45,6 +48,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [editing, setEditing] = useState(null)
   const { items, saveTtk, deleteTtk, duplicateTtk } = useReferenceTtkStore()
+  const { items: nomenclature, saveItem: saveNomenclatureItem, deleteItem: deleteNomenclatureItem, importItems: importNomenclatureItems } = useNomenclatureStore()
 
   const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
   const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || 'Эталонные ТТК'
@@ -107,7 +111,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
-          {items.length} эталонных ТТК<br />localStorage · без backend
+          {items.length} эталонных ТТК<br />{nomenclature.length} позиций номенклатуры<br />localStorage · без backend
         </div>
       </aside>
 
@@ -118,8 +122,9 @@ export default function App() {
         </header>
         <div style={{ padding:28 }}>
           {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={downloadJson} />}
-          {section === 'create' && <ReferenceTtkForm initial={editing} onCancel={() => setSection('list')} onSave={handleSave} />}
+          {section === 'create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onSaveNomenclatureItem={saveNomenclatureItem} onCancel={() => setSection('list')} onSave={handleSave} />}
           {section === 'view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('list')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
+          {section === 'nomenclature' && <NomenclaturePage items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
           {section === 'settings' && <Settings />}
         </div>
       </main>
