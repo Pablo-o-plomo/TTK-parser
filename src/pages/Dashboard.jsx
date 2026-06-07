@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Pill } from '../components/ui.jsx'
 import { CAT_ICONS, STA_ICONS, REST_COLOR } from '../constants.js'
 import { APPROVAL_STATUS } from '../domain/workflow.js'
+import { calculateNetworkAnalytics } from '../services/standardsService.js'
 
 function buildStats(dishes) {
   return dishes.reduce((acc, dish) => {
@@ -22,7 +23,7 @@ function buildStats(dishes) {
   }, { restaurants: {}, categories: {}, stations: {}, withErrors: 0, sharedDishes: 0, names: new Set() })
 }
 
-export default function Dashboard({ dishes, pf, tasks = [], go }) {
+export default function Dashboard({ dishes, pf, tasks = [], uploads = [], go }) {
   const stats = useMemo(() => buildStats(dishes), [dishes])
   const topCats = Object.entries(stats.categories).sort((a,b) => b[1].total - a[1].total).slice(0, 9)
   const stations = Object.entries(stats.stations).sort((a,b) => b[1].total - a[1].total)
@@ -31,6 +32,7 @@ export default function Dashboard({ dishes, pf, tasks = [], go }) {
   const reviewTasks = tasks.filter(task => task.status === APPROVAL_STATUS.SUBMITTED || task.status === APPROVAL_STATUS.IN_REVIEW).length
   const approvedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.APPROVED).length
   const closedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.CLOSED).length
+  const analytics = useMemo(() => calculateNetworkAnalytics({ dishes, tasks, uploads }), [dishes, tasks, uploads])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
@@ -69,6 +71,9 @@ export default function Dashboard({ dishes, pf, tasks = [], go }) {
         <Pill icon="✅" v={approvedTasks}       label="Подтверждено"      color="#16a34a" />
         <Pill icon="🏁" v={closedTasks}         label="Закрыто по сети"   color="#0f766e" />
         <Pill icon="📦" v={pf.length}          label="Наим. п/ф"         color="#d97706" />
+        <Pill icon="📷" v={analytics.withoutPhotos} label="Без фото"      color="#ef4444" />
+        <Pill icon="🧑‍🍳" v={analytics.withoutTechnology} label="Без технологии" color="#d97706" />
+        <Pill icon="📄" v={analytics.withoutPdf} label="Без PDF"          color="#64748b" />
       </div>
 
       {/* Two-column */}
@@ -103,6 +108,28 @@ export default function Dashboard({ dishes, pf, tasks = [], go }) {
               <div style={{ fontSize:15, fontWeight:800, color:'#6366f1' }}>{v.total}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🏆 Рейтинг ресторанов</div>
+          {analytics.restaurantRating.map(item => (
+            <div key={item.restaurant} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:9 }}>
+              <span style={{ width:86, fontSize:12, fontWeight:700 }}>{item.restaurant}</span>
+              <div style={{ flex:1, height:8, background:'#f1f5f9', borderRadius:999, overflow:'hidden' }}><div style={{ width:`${item.score}%`, height:'100%', background:item.score >= 95 ? '#16a34a' : item.score >= 85 ? '#d97706' : '#ef4444' }} /></div>
+              <span style={{ fontSize:12, fontWeight:900 }}>{item.score}%</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>⚠️ Проблемные блюда</div>
+          {analytics.problematicDishes.length ? analytics.problematicDishes.map(item => <div key={item.group.key} style={{ fontSize:12, padding:'6px 0', borderBottom:'1px solid #f1f5f9' }}>{item.group.name} · <b>{item.diffCount}</b> отличий</div>) : <div style={{ color:'#94a3b8', fontSize:12 }}>Нет данных по расхождениям</div>}
+        </div>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🕓 Последние изменения</div>
+          {analytics.latestChanges.length ? analytics.latestChanges.map((item, i) => <div key={i} style={{ fontSize:12, padding:'6px 0', borderBottom:'1px solid #f1f5f9' }}>{item.text}</div>) : <div style={{ color:'#94a3b8', fontSize:12 }}>История пока пуста</div>}
+          <div style={{ marginTop:10, fontSize:11, color:'#64748b' }}>Среднее время исправления: {analytics.averageFixTimeDays} дн.</div>
         </div>
       </div>
 

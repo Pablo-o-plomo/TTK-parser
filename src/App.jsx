@@ -66,7 +66,7 @@ export default function App() {
 
   const visibleErrors = useMemo(() => visibleDishes.filter(dish => dish.hasErrors).length, [visibleDishes])
   const visibleClean = visibleDishes.length - visibleErrors
-  const taskMatch = window.location.pathname.match(/^\/tasks\/([^/]+)/)
+  const taskMatch = window.location.pathname.match(/^\/tasks?\/([^/]+)/)
   const taskForRestaurant = taskMatch ? tasks.find(task => task.id === taskMatch[1]) : null
 
   if (taskMatch) return <TaskSubmission task={taskForRestaurant} submitTask={submitTask} />
@@ -160,11 +160,11 @@ export default function App() {
 
         {/* Content */}
         <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} go={setSection} />}
+          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} uploads={uploads} go={setSection} />}
           {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
           {section === 'comparison'  && <Comparison   dishes={dishes} tasks={tasks} manualLinks={manualLinks} addManualLink={addManualLink} createTask={createTask} referenceRestaurant={referenceRestaurant} setReferenceRestaurant={setReferenceRestaurant} />}
           {section === 'review'      && <ReviewTasks  tasks={tasks} updateTaskStatus={updateTaskStatus} />}
-          {section === 'uploads'     && <Uploads      uploads={uploads} addUpload={addUpload} />}
+          {section === 'uploads'     && <Uploads      uploads={uploads} addUpload={addUpload} dishes={dishes} />}
           {section === 'pf'          && <PF           pf={pf} />}
           {section === 'stations'    && <Stations     dishes={visibleDishes} />}
           {section === 'photos'      && <Photos       dishes={visibleDishes} />}

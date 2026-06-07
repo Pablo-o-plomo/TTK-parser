@@ -99,7 +99,7 @@ function FileGallery({ dish }) {
 }
 
 function TaskCreatedModal({ task, onClose }) {
-  const url = `${window.location.origin}/tasks/${task.id}`
+  const url = `${window.location.origin}/task/${task.id}`
   const [copied, setCopied] = useState(false)
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.55)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
@@ -221,11 +221,13 @@ export default function Comparison({ dishes, tasks, manualLinks, addManualLink, 
             <section style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, overflow:'hidden' }}>
               <div style={{ display:'flex', borderBottom:'1px solid #e5e7eb', overflowX:'auto' }}>
                 {[
-                  ['reference', 'Эталонная ТТК'], ['comparison', 'Сравнение по ресторанам'], ['tasks', 'Задания'], ['photos', 'Фото'], ['history', 'История'],
+                  ['reference', 'ТТК'], ['photos', 'Фото'], ['semifinished', 'Полуфабрикаты'], ['technology', 'Технология'], ['comparison', 'Версии ресторанов'], ['documents', 'PDF документы'], ['tasks', 'Задания'], ['history', 'История изменений'],
                 ].map(([id, label]) => <button key={id} onClick={() => setTab(id)} style={TAB_ST(tab === id)}>{label}</button>)}
               </div>
               <div style={{ padding:18 }}>
                 {tab === 'reference' && <TtkCard dish={currentDish} title={currentDish?.restaurant === referenceRestaurant ? 'Эталонная ТТК' : `Версия ТТК: ${currentDish?.restaurant}`} />}
+                {tab === 'semifinished' && <InfoList title="Полуфабрикаты" items={currentDish?.components || currentDish?.semifinished} empty="Полуфабрикаты не указаны" />}
+                {tab === 'technology' && <div style={{ background:'#fffbeb', border:'1px dashed #fbbf24', borderRadius:12, padding:16, color:'#92400e', whiteSpace:'pre-wrap' }}>{currentDish?.technology || 'Технология не загружена'}</div>}
 
                 {tab === 'comparison' && (
                   <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -251,6 +253,23 @@ export default function Comparison({ dishes, tasks, manualLinks, addManualLink, 
                       </tbody>
                     </table>
                     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>{rows.flatMap(row => diffLabels(row).map(label => <Tag key={`${row.restaurant}-${label}`} xs color={row.missing ? '#64748b' : '#d97706'}>{row.restaurant}: {label}</Tag>))}</div>
+                    {openedVersion && openedVersion !== referenceDish && (
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:12, padding:12 }}>
+                        {[['Эталон', referenceDish], [openedVersion.restaurant, openedVersion]].map(([title, dish]) => (
+                          <div key={title} style={{ background:'#fff', borderRadius:10, padding:12 }}>
+                            <div style={{ fontSize:12, fontWeight:900, color:'#475569', marginBottom:8 }}>{title}</div>
+                            <div style={{ fontSize:13, lineHeight:1.8 }}>
+                              <b>Выход:</b> {dish?.output || '—'}<br />
+                              <b>ПФ:</b> {dish?.components?.length || 0}<br />
+                              <b>Ингредиенты:</b> {dish?.ingredients?.length || 0}<br />
+                              <b>Фото:</b> {(dish?.photos?.length || 0) ? 'Есть' : 'Нет'}<br />
+                              <b>Технология:</b> {dish?.technology ? 'Есть' : 'Нет'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {rowForTask && <CreateTaskPanel group={selectedGroup} row={rowForTask} referenceDish={referenceDish} onCreate={handleCreateTask} />}
                     <button onClick={() => setShowManual(v => !v)} style={{ ...SEL_ST, alignSelf:'flex-start' }}>Связать вручную</button>
                     {showManual && (
@@ -263,8 +282,9 @@ export default function Comparison({ dishes, tasks, manualLinks, addManualLink, 
                   </div>
                 )}
 
-                {tab === 'tasks' && <div style={{ display:'flex', flexDirection:'column', gap:8 }}>{groupTasks.length ? groupTasks.map(task => <div key={task.id} style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12 }}><Tag color={STATUS_COLORS[task.status]}>{STATUS_LABELS[task.status]}</Tag><strong style={{ marginLeft:8 }}>{task.restaurant}</strong><a href={`/tasks/${task.id}`} target="_blank" rel="noreferrer" style={{ marginLeft:12, color:'#2563eb' }}>Открыть ссылку задания</a></div>) : emptyText('Заданий по блюду пока нет')}</div>}
+                {tab === 'tasks' && <div style={{ display:'flex', flexDirection:'column', gap:8 }}>{groupTasks.length ? groupTasks.map(task => <div key={task.id} style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:12 }}><Tag color={STATUS_COLORS[task.status]}>{STATUS_LABELS[task.status]}</Tag><strong style={{ marginLeft:8 }}>{task.restaurant}</strong><a href={`/task/${task.id}`} target="_blank" rel="noreferrer" style={{ marginLeft:12, color:'#2563eb' }}>Открыть ссылку задания</a></div>) : emptyText('Заданий по блюду пока нет')}</div>}
                 {tab === 'photos' && <FileGallery dish={currentDish} />}
+                {tab === 'documents' && <div style={{ display:'flex', flexDirection:'column', gap:8 }}>{[...(currentDish?.pdfDocuments || []), ...(currentDish?.excelDocuments || [])].length ? [...(currentDish?.pdfDocuments || []), ...(currentDish?.excelDocuments || [])].map((file, i) => <a key={i} href={file.dataUrl || file} target="_blank" rel="noreferrer" style={{ color:'#2563eb', background:'#fff', border:'1px solid #e5e7eb', borderRadius:12, padding:12 }}>{file.name || file}</a>) : emptyText('PDF/Excel документы пока не загружены')}</div>}
                 {tab === 'history' && <div style={{ display:'flex', flexDirection:'column', gap:8 }}>{groupTasks.flatMap(task => task.history || []).length ? groupTasks.flatMap(task => task.history || []).map((item, i) => <div key={i} style={{ fontSize:12, color:'#334155', borderBottom:'1px solid #f1f5f9', paddingBottom:7 }}>{new Date(item.at).toLocaleString('ru-RU')} — {STATUS_LABELS[item.status] || item.status} {item.comment && `· ${item.comment}`}</div>) : emptyText('История пока пуста')}</div>}
               </div>
             </section>

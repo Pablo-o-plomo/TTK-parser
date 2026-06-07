@@ -71,6 +71,7 @@ export function normalizeDishName(name = '') {
     .replace(/^д\s+/u, '')
     .replace(/\b\d+\s*гр\b/gu, '')
     .replace(/\b\d+\s*г\b/gu, '')
+    .replace(/[^а-яёa-z0-9\s]/giu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
 }
