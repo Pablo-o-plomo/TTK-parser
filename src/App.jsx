@@ -3,13 +3,19 @@ import { Tag } from './components/ui.jsx'
 import { BookIcon, ClipIcon, GraduationIcon, GridIcon } from './components/icons.jsx'
 import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
 import { useNomenclatureStore } from './hooks/useNomenclature.js'
+import { useProductsStore } from './hooks/useProducts.js'
+import { useSemifinishedStore } from './hooks/useSemifinished.js'
 import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
 import { NomenclaturePage } from './pages/Nomenclature.jsx'
+import { ProductsPage } from './pages/ProductsPage.jsx'
+import SemifinishedPage from './pages/SemifinishedPage.jsx'
 
 const NAV_ITEMS = [
   { id: 'list', label: 'Эталонные ТТК', icon: BookIcon },
   { id: 'create', label: 'Создать ТТК', icon: ClipIcon },
   { id: 'nomenclature', label: 'Номенклатура', icon: GridIcon },
+  { id: 'products', label: 'Товары', icon: GridIcon },
+  { id: 'semifinished', label: 'Полуфабрикаты', icon: GridIcon },
   { id: 'settings', label: 'Настройки', icon: GraduationIcon },
 ]
 
@@ -47,8 +53,29 @@ export default function App() {
   const [section, setSection] = useState('list')
   const [selectedId, setSelectedId] = useState(null)
   const [editing, setEditing] = useState(null)
+
   const { items, saveTtk, deleteTtk, duplicateTtk } = useReferenceTtkStore()
-  const { items: nomenclature, saveItem: saveNomenclatureItem, deleteItem: deleteNomenclatureItem, importItems: importNomenclatureItems } = useNomenclatureStore()
+
+  const {
+    items: nomenclature,
+    saveItem: saveNomenclatureItem,
+    deleteItem: deleteNomenclatureItem,
+    importItems: importNomenclatureItems,
+  } = useNomenclatureStore()
+
+  const {
+    items: products,
+    saveItem: saveProduct,
+    deleteItem: deleteProduct,
+    importItems: importProducts,
+  } = useProductsStore()
+
+  const {
+    items: semifinished,
+    saveItem: saveSemifinished,
+    deleteItem: deleteSemifinished,
+    importItems: importSemifinished,
+  } = useSemifinishedStore()
 
   const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
   const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || 'Эталонные ТТК'
@@ -95,36 +122,117 @@ export default function App() {
           <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>Академия Клёво</div>
           <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Короткая печатная ТТК A4</div>
         </div>
+
         <nav style={{ padding:10, flex:1 }}>
           {NAV_ITEMS.map(item => {
-            const active = section === item.id || (item.id === 'list' && section === 'view')
+            const active =
+              section === item.id ||
+              (item.id === 'list' && section === 'view')
+
             return (
-              <button key={item.id} onClick={() => item.id === 'create' ? createItem() : setSection(item.id)} style={{
-                width:'100%', display:'flex', alignItems:'center', gap:10, padding:'11px 12px', borderRadius:10,
-                border:'none', cursor:'pointer', marginBottom:4, textAlign:'left', background:active ? '#6366f1' : 'transparent',
-                color:active ? '#fff' : '#cbd5e1', fontWeight:active ? 800 : 600, fontSize:13,
-              }}>
+              <button
+                key={item.id}
+                onClick={() => item.id === 'create' ? createItem() : setSection(item.id)}
+                style={{
+                  width:'100%',
+                  display:'flex',
+                  alignItems:'center',
+                  gap:10,
+                  padding:'11px 12px',
+                  borderRadius:10,
+                  border:'none',
+                  cursor:'pointer',
+                  marginBottom:4,
+                  textAlign:'left',
+                  background:active ? '#6366f1' : 'transparent',
+                  color:active ? '#fff' : '#cbd5e1',
+                  fontWeight:active ? 800 : 600,
+                  fontSize:13,
+                }}
+              >
                 <SafeIcon icon={item.icon} />
                 {item.label}
               </button>
             )
           })}
         </nav>
+
         <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
-          {items.length} эталонных ТТК<br />{nomenclature.length} позиций номенклатуры<br />localStorage · без backend
+          {items.length} эталонных ТТК<br />
+          {nomenclature.length} позиций номенклатуры<br />
+          {products.length} товаров<br />
+          {semifinished.length} полуфабрикатов<br />
+          localStorage · без backend
         </div>
       </aside>
 
       <main style={{ flex:1, minWidth:0 }}>
         <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{section === 'view' ? selected?.title || 'Карточка ТТК' : pageTitle}</div>
+          <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>
+            {section === 'view' ? selected?.title || 'Карточка ТТК' : pageTitle}
+          </div>
           <Tag color="#6366f1" bg="#eef2ff">Создал → заполнил строки → добавил фото → распечатал</Tag>
         </header>
+
         <div style={{ padding:28 }}>
-          {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={downloadJson} />}
-          {section === 'create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onSaveNomenclatureItem={saveNomenclatureItem} onCancel={() => setSection('list')} onSave={handleSave} />}
-          {section === 'view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('list')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
-          {section === 'nomenclature' && <NomenclaturePage items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
+          {section === 'list' && (
+            <ReferenceTtkList
+              items={items}
+              onOpen={openItem}
+              onEdit={editItem}
+              onCreate={createItem}
+              onDownload={downloadJson}
+            />
+          )}
+
+          {section === 'create' && (
+            <ReferenceTtkForm
+              initial={editing}
+              nomenclature={nomenclature}
+              onSaveNomenclatureItem={saveNomenclatureItem}
+              onCancel={() => setSection('list')}
+              onSave={handleSave}
+            />
+          )}
+
+          {section === 'view' && selected && (
+            <ReferenceTtkView
+              ttk={selected}
+              onBack={() => setSection('list')}
+              onEdit={() => editItem(selected)}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+            />
+          )}
+
+          {section === 'nomenclature' && (
+            <NomenclaturePage
+              items={nomenclature}
+              onSave={saveNomenclatureItem}
+              onDelete={deleteNomenclatureItem}
+              onImport={importNomenclatureItems}
+            />
+          )}
+
+          {section === 'products' && (
+            <ProductsPage
+              items={products}
+              onSave={saveProduct}
+              onDelete={deleteProduct}
+              onImport={importProducts}
+            />
+          )}
+
+          {section === 'semifinished' && (
+            <SemifinishedPage
+              items={semifinished}
+              products={products}
+              onSave={saveSemifinished}
+              onDelete={deleteSemifinished}
+              onImport={importSemifinished}
+            />
+          )}
+
           {section === 'settings' && <Settings />}
         </div>
       </main>
