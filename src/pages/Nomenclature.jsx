@@ -54,6 +54,14 @@ async function fileToText(file) {
   })
 }
 
+function parseJsonImport(text) {
+  const parsed = JSON.parse(text)
+  if (Array.isArray(parsed)) return parsed
+  if (Array.isArray(parsed.items)) return parsed.items
+  if (Array.isArray(parsed.nomenclature)) return parsed.nomenclature
+  return []
+}
+
 function Field({ label, children }) {
   return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span>{children}</label>
 }
@@ -87,6 +95,7 @@ function NomenclatureForm({ initial, onSave, onCancel }) {
         <TextField label="Название" value={form.name} onChange={v => update('name', v)} />
         <Field label="Тип"><select value={form.type} onChange={e => update('type', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{NOMENCLATURE_TYPES.map(type => <option key={type}>{type}</option>)}</select></Field>
         <TextField label="Категория" value={form.category} onChange={v => update('category', v)} />
+        <TextField label="Путь категории" value={form.categoryPath} onChange={v => update('categoryPath', v)} />
         <TextField label="Ед. изм." value={form.unit} onChange={v => update('unit', v)} />
         <TextField label="Выход" value={form.output} onChange={v => update('output', v)} />
       </div>
@@ -109,7 +118,7 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
     const needle = query.trim().toLowerCase()
     return items.filter(item => {
       const matchesType = type === 'all' || item.type === type
-      const haystack = [item.name, item.type, item.category, item.unit, item.description, item.composition].join(' ').toLowerCase()
+      const haystack = [item.name, item.type, item.category, item.categoryPath, item.unit, item.description, item.composition].join(' ').toLowerCase()
       return matchesType && (!needle || haystack.includes(needle))
     })
   }, [items, query, type])
@@ -130,12 +139,11 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
     if (!file) return
     try {
       const text = await fileToText(file)
-      const parsed = file.name.toLowerCase().endsWith('.json') ? JSON.parse(text) : parseCsv(text)
-      const rows = Array.isArray(parsed) ? parsed : []
+      const rows = file.name.toLowerCase().endsWith('.json') ? parseJsonImport(text) : parseCsv(text)
       const count = onImport(rows)
       setMessage(`Импортировано позиций: ${count}`)
     } catch {
-      setMessage('Не удалось импортировать файл. Проверьте CSV/JSON формат.')
+      setMessage('Не удалось импортировать файл. Проверьте JSON формат и поля name,type,category,categoryPath,unit,description,composition,cookingMethod,output.')
     }
   }
 
@@ -144,10 +152,10 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
       <section style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
         <div>
           <h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>Номенклатура</h1>
-          <div style={{ color:'#64748b', fontSize:14 }}>Справочник товаров, полуфабрикатов, соусов и заготовок для быстрого заполнения ТТК.</div>
+          <div style={{ color:'#64748b', fontSize:14 }}>Справочник товаров, полуфабрикатов, соусов и заготовок для быстрого заполнения ТТК. JSON: id, name, type, category, categoryPath, unit, description, composition, cookingMethod, output.</div>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <label style={SEL_ST}>Импортировать номенклатуру<input type="file" accept=".csv,.json,application/json,text/csv" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
+          <label style={SEL_ST}>Импорт JSON<input type="file" accept=".json,application/json" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
           <button onClick={startCreate} style={PRIMARY}>Добавить позицию</button>
         </div>
       </section>
@@ -174,11 +182,12 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
         ) : (
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-              <thead><tr>{['Название','Тип','Категория','Ед. изм.','Краткое описание',''].map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead>
+              <thead><tr>{['Название','Тип','Категория','Путь категории','Ед. изм.','Краткое описание',''].map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead>
               <tbody>{filtered.map(item => <tr key={item.id}>
                 <td style={{ ...TD, fontWeight:900, color:'#0f172a' }}>{item.name || 'Без названия'}</td>
                 <td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{item.type}</Tag></td>
                 <td style={TD}>{item.category || '—'}</td>
+                <td style={TD}>{item.categoryPath || '—'}</td>
                 <td style={TD}>{item.unit || '—'}</td>
                 <td style={TD}>{item.description || item.composition || '—'}</td>
                 <td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></td>
