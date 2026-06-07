@@ -1,7 +1,16 @@
-import { useState } from 'react'
+import { cloneElement, isValidElement, useState } from 'react'
 import { useData } from './hooks/useData.js'
 import { Loading, ErrorScreen, Tag } from './components/ui.jsx'
-import { Ico } from './components/icons.jsx'
+import {
+  BookIcon,
+  BowlIcon,
+  CameraIcon,
+  ClipIcon,
+  FireIcon,
+  GraduationIcon,
+  GridIcon,
+  Ico,
+} from './components/icons.jsx'
 import { NAV_ITEMS, SUMMARY } from './constants.js'
 
 import Dashboard   from './pages/Dashboard.jsx'
@@ -13,13 +22,19 @@ import Audit       from './pages/Audit.jsx'
 import Attestation from './pages/Attestation.jsx'
 
 const NAV_ICONS = {
-  dashboard:   Ico.grid,
-  dishes:      Ico.book,
-  pf:          Ico.bowl,
-  stations:    Ico.fire,
-  photos:      Ico.cam,
-  audit:       Ico.clip,
-  attestation: Ico.grad,
+  dashboard:   GridIcon,
+  dishes:      BookIcon,
+  pf:          BowlIcon,
+  stations:    FireIcon,
+  photos:      CameraIcon,
+  audit:       ClipIcon,
+  attestation: GraduationIcon,
+}
+
+function SafeIcon({ icon: Icon, ...props }) {
+  if (typeof Icon === 'function') return <Icon {...props} />
+  if (isValidElement(Icon)) return cloneElement(Icon, props)
+  return null
 }
 
 export default function App() {
@@ -56,7 +71,7 @@ export default function App() {
               onMouseEnter={e => { if (!active) { e.currentTarget.style.background='rgba(255,255,255,.06)'; e.currentTarget.style.color='#e2e8f0' }}}
               onMouseLeave={e => { if (!active) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#94a3b8' }}}
               >
-                <span style={{ opacity: active ? 1 : .8, flexShrink:0 }}><NavIcon /></span>
+                <span style={{ opacity: active ? 1 : .8, flexShrink:0 }}><SafeIcon icon={NavIcon} /></span>
                 <span style={{ flex:1 }}>{n.label}</span>
                 {n.badge != null && (
                   <span style={{
