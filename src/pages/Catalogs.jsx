@@ -8,13 +8,14 @@ const FIELD = { display:'flex', flexDirection:'column', gap:6 }
 const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
 const TEXTAREA = { width:'100%', boxSizing:'border-box', minHeight:84, border:'1.5px solid #e5e7eb', borderRadius:12, padding:12, fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }
 const PRIMARY = { ...SEL_ST, background:'#6366f1', borderColor:'#6366f1', color:'#fff', fontWeight:900, padding:'11px 16px' }
-const PRODUCT_FILTERS = [{ value: 'all', label: 'Все' }]
+const PRODUCT_FILTERS = [{ value:'all', label:'Все' }]
 
 function parseCsv(text) {
   const rows = []
   let current = ''
   let row = []
   let quoted = false
+
   for (let i = 0; i < text.length; i += 1) {
     const char = text[i]
     const next = text[i + 1]
@@ -25,9 +26,11 @@ function parseCsv(text) {
       if (char === '\r' && next === '\n') i += 1
       row.push(current.trim())
       if (row.some(Boolean)) rows.push(row)
-      row = []; current = ''
+      row = []
+      current = ''
     } else current += char
   }
+
   row.push(current.trim())
   if (row.some(Boolean)) rows.push(row)
   if (rows.length < 2) return []
@@ -35,7 +38,16 @@ function parseCsv(text) {
   return rows.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] || ''])))
 }
 
-async function fileToText(file) {
+function parseJson(text) {
+  const parsed = JSON.parse(text)
+  if (Array.isArray(parsed)) return parsed
+  if (Array.isArray(parsed.items)) return parsed.items
+  if (Array.isArray(parsed.products)) return parsed.products
+  if (Array.isArray(parsed.semifinished)) return parsed.semifinished
+  return []
+}
+
+function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result)
@@ -44,14 +56,13 @@ async function fileToText(file) {
   })
 }
 
-function parseImport(text, fileName, defaultType) {
-  const lower = fileName.toLowerCase()
-  if (lower.endsWith('.json')) {
-    const parsed = JSON.parse(text)
-    const rows = Array.isArray(parsed) ? parsed : parsed.items || parsed.nomenclature || []
-    return Array.isArray(rows) ? rows.map(row => ({ type: defaultType, ...row })) : []
-  }
-  return parseCsv(text).map(row => ({ type: defaultType, ...row }))
+function fileToPayload(file) {
+  return new Promise(resolve => {
+    if (!file) return resolve(null)
+    const reader = new FileReader()
+    reader.onload = () => resolve({ name:file.name, type:file.type, size:file.size, dataUrl:reader.result })
+    reader.readAsDataURL(file)
+  })
 }
 
 function downloadJson(name, data) {
@@ -76,18 +87,10 @@ function TextAreaField({ label, value, onChange }) {
   return <Field label={label}><textarea value={value || ''} onChange={e => onChange(e.target.value)} style={TEXTAREA} /></Field>
 }
 
-function fileToPayload(file) {
-  return new Promise(resolve => {
-    if (!file) return resolve(null)
-    const reader = new FileReader()
-    reader.onload = () => resolve({ name:file.name, type:file.type, size:file.size, dataUrl:reader.result })
-    reader.readAsDataURL(file)
-  })
-}
-
 function ProductForm({ initial, onSave, onCancel }) {
   const [form, setForm] = useState(() => initial || createEmptyProduct())
   const update = (field, value) => setForm(current => ({ ...current, [field]: value }))
+
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ ...SECTION, display:'flex', flexDirection:'column', gap:12 }}>
       <h2 style={{ margin:0 }}>{initial ? 'Редактировать товар' : 'Добавить товар'}</h2>
@@ -96,7 +99,7 @@ function ProductForm({ initial, onSave, onCancel }) {
         <TextField label="Ед. изм." value={form.unit} onChange={v => update('unit', v)} />
         <TextField label="Категория" value={form.category} onChange={v => update('category', v)} />
       </div>
-      <TextAreaField label="Комментарий" value={form.comment || form.description} onChange={v => { update('comment', v); update('description', v) }} />
+      <TextAreaField label="Комментарий" value={form.comment} onChange={v => update('comment', v)} />
       <div style={{ display:'flex', gap:8 }}><button type="submit" style={PRIMARY}>Сохранить</button><button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button></div>
     </form>
   )
@@ -109,6 +112,7 @@ function SemifinishedForm({ initial, products, onSave, onCancel }) {
     if (!product) return
     update('ingredients', [...(form.ingredients || []), { productId: product.id, name: product.name, qty:'', unit: product.unit }])
   }
+
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ ...SECTION, display:'flex', flexDirection:'column', gap:12 }}>
       <h2 style={{ margin:0 }}>{initial ? 'Редактировать полуфабрикат' : 'Добавить полуфабрикат'}</h2>
@@ -133,17 +137,18 @@ export function CatalogPage({ mode, items, products = [], onSave, onDelete, onIm
   const isProducts = mode === 'products'
   const filters = isProducts ? PRODUCT_FILTERS : SEMIFINISHED_FILTERS
   const title = isProducts ? '📦 Товары' : '🥣 Полуфабрикаты'
-  const subtitle = isProducts ? 'Справочник товарной номенклатуры для составления полуфабрикатов.' : 'Справочник полуфабрикатов, соусов и заготовок для эталонных ТТК.'
+  const subtitle = isProducts ? 'Справочник товарной номенклатуры.' : 'Справочник полуфабрикатов, соусов и заготовок.'
   const [query, setQuery] = useState('')
   const [type, setType] = useState('all')
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [message, setMessage] = useState('')
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return items.filter(item => {
       const matchesType = isProducts || type === 'all' || item.type === type
-      const haystack = [item.name, item.category, item.categoryPath, item.unit, item.comment, item.description, item.composition, item.cookingMethod].join(' ').toLowerCase()
+      const haystack = [item.name, item.category, item.unit, item.comment, item.composition, item.cookingMethod].join(' ').toLowerCase()
       return matchesType && (!needle || haystack.includes(needle))
     })
   }, [items, isProducts, query, type])
@@ -151,11 +156,12 @@ export function CatalogPage({ mode, items, products = [], onSave, onDelete, onIm
   async function handleImport(file) {
     if (!file) return
     if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
-      setMessage('Excel-файл выбран. На этом этапе сохраните его как CSV и импортируйте CSV, либо импортируйте JSON-резервную копию.')
+      setMessage('Excel выбран. Сохраните файл как CSV или импортируйте подготовленный JSON.')
       return
     }
     try {
-      const rows = parseImport(await fileToText(file), file.name, isProducts ? 'product' : 'semifinished')
+      const text = await readFileAsText(file)
+      const rows = file.name.toLowerCase().endsWith('.json') ? parseJson(text) : parseCsv(text)
       const count = onImport(rows)
       setMessage(`Импортировано: ${count}`)
     } catch {
@@ -175,6 +181,7 @@ export function CatalogPage({ mode, items, products = [], onSave, onDelete, onIm
       <section style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}>
         <div><h1 style={{ margin:'0 0 6px', fontSize:28 }}>{title}</h1><div style={{ color:'#64748b' }}>{subtitle}</div></div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <label style={SEL_ST}>Импорт JSON<input type="file" accept=".json,application/json" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
           <label style={SEL_ST}>Импорт CSV<input type="file" accept=".csv,text/csv" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
           <label style={SEL_ST}>Импорт Excel<input type="file" accept=".xls,.xlsx" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
           <button onClick={() => downloadJson(`${isProducts ? 'products' : 'semifinished'}.json`, visible)} style={SEL_ST}>Экспорт</button>
@@ -186,7 +193,7 @@ export function CatalogPage({ mode, items, products = [], onSave, onDelete, onIm
       {showForm && (isProducts ? <ProductForm initial={editing} onSave={save} onCancel={() => setShowForm(false)} /> : <SemifinishedForm initial={editing} products={products} onSave={save} onCancel={() => setShowForm(false)} />)}
       <section style={SECTION}>
         <h2 style={{ marginTop:0 }}>Позиции ({visible.length})</h2>
-        {visible.length === 0 ? <div style={{ color:'#94a3b8', textAlign:'center', padding:28 }}>Пока нет данных</div> : <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}><thead><tr>{(isProducts ? ['Наименование','Ед. изм.','Категория','Комментарий',''] : ['Название','Тип','Выход','Состав','Статус','']).map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead><tbody>{visible.map(item => <tr key={item.id}>{isProducts ? <><td style={TD}><b>{item.name}</b></td><td style={TD}>{item.unit}</td><td style={TD}>{item.category || '—'}</td><td style={TD}>{item.comment || item.description || '—'}</td></> : <><td style={TD}><b>{item.name}</b></td><td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{SEMIFINISHED_TYPE_LABELS[item.type]}</Tag></td><td style={TD}>{item.output || '—'}</td><td style={TD}>{item.composition || '—'}</td><td style={TD}>{item.status || 'draft'}</td></>}<td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></td></tr>)}</tbody></table></div>}
+        {visible.length === 0 ? <div style={{ color:'#94a3b8', textAlign:'center', padding:28 }}>Пока нет данных</div> : <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}><thead><tr>{(isProducts ? ['Наименование','Ед. изм.','Категория','Комментарий',''] : ['Название','Тип','Выход','Состав','Статус','']).map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead><tbody>{visible.map(item => <tr key={item.id}>{isProducts ? <><td style={TD}><b>{item.name}</b></td><td style={TD}>{item.unit}</td><td style={TD}>{item.category || '—'}</td><td style={TD}>{item.comment || '—'}</td></> : <><td style={TD}><b>{item.name}</b></td><td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{SEMIFINISHED_TYPE_LABELS[item.type]}</Tag></td><td style={TD}>{item.output || '—'}</td><td style={TD}>{item.composition || '—'}</td><td style={TD}>{item.status || 'draft'}</td></>}<td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></td></tr>)}</tbody></table></div>}
       </section>
     </div>
   )

@@ -5,13 +5,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "vite preview --host 0.0.0.0 --port $PORT"
+    "preview": "vite preview --host 0.0.0.0 --port ${PORT:-3000}",
+    "lint": "eslint src --ext js,jsx",
+    "start": "vite preview --host 0.0.0.0 --port ${PORT:-3000}"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^4.3.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "@vitejs/plugin-react": "^4.3.1"
   },
   "devDependencies": {
     "eslint": "^9.9.0",
