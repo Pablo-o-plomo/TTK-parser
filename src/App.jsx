@@ -1,106 +1,171 @@
-import { useState } from 'react'
-import { useData } from './hooks/useData.js'
-import { Loading, ErrorScreen, Tag } from './components/ui.jsx'
-import { Ico } from './components/icons.jsx'
-import { NAV_ITEMS, SUMMARY } from './constants.js'
+import { useMemo, useState } from 'react'
+import { Tag } from './components/ui.jsx'
+import { BookIcon, BowlIcon, ClipIcon, GraduationIcon } from './components/icons.jsx'
+import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
+import { useNomenclatureStore } from './hooks/useNomenclature.js'
+import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
+import { CatalogPage } from './pages/Catalogs.jsx'
 
-import Dashboard   from './pages/Dashboard.jsx'
-import Dishes      from './pages/Dishes.jsx'
-import PF          from './pages/PF.jsx'
-import Stations    from './pages/Stations.jsx'
-import Photos      from './pages/Photos.jsx'
-import Audit       from './pages/Audit.jsx'
-import Attestation from './pages/Attestation.jsx'
+const NAV_ITEMS = [
+  { id: 'products', label: '📦 Товары', icon: ClipIcon },
+  { id: 'semifinished', label: '🥣 Полуфабрикаты', icon: BowlIcon },
+  { id: 'ttk', label: '🍽 Эталонные ТТК', icon: BookIcon },
+  { id: 'settings', label: '⚙ Настройки', icon: GraduationIcon },
+]
 
-const NAV_ICONS = {
-  dashboard:   Ico.grid,
-  dishes:      Ico.book,
-  pf:          Ico.bowl,
-  stations:    Ico.fire,
-  photos:      Ico.cam,
-  audit:       Ico.clip,
-  attestation: Ico.grad,
+function SafeIcon({ icon: Icon }) {
+  return typeof Icon === 'function' ? <Icon /> : null
+}
+
+function downloadJson(name, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsText(file)
+  })
+}
+
+function Settings({ ttkItems, nomenclature, onRestore }) {
+  const [message, setMessage] = useState('')
+  const backup = { version: 1, exportedAt: new Date().toISOString(), referenceTtk: ttkItems, nomenclature }
+
+  async function importBackup(file) {
+    if (!file) return
+    try {
+      const parsed = JSON.parse(await readFileAsText(file))
+      onRestore({ referenceTtk: parsed.referenceTtk || parsed.ttk || [], nomenclature: parsed.nomenclature || [] })
+      setMessage('База восстановлена из JSON')
+    } catch {
+      setMessage('Не удалось восстановить базу. Проверьте JSON-файл резервной копии.')
+    }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, maxWidth:920 }}>
+      <section style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24 }}>
+        <h1 style={{ margin:'0 0 8px', color:'#0f172a' }}>Настройки</h1>
+        <p style={{ color:'#64748b', lineHeight:1.6 }}>
+          КЛЁВО — цифровая библиотека эталонных технологических карт. Здесь нет CRM, аудита, заданий и сравнения ресторанов — только товары, полуфабрикаты и эталонные ТТК.
+        </p>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
+          <Tag color="#6366f1" bg="#eef2ff">localStorage</Tag>
+          <Tag color="#16a34a" bg="#f0fdf4">Печать A4</Tag>
+          <Tag color="#d97706" bg="#fffbeb">Резервная копия JSON</Tag>
+        </div>
+      </section>
+      <section style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24 }}>
+        <h2 style={{ marginTop:0 }}>Резервное копирование</h2>
+        <p style={{ color:'#64748b' }}>Экспортируйте всю базу в один JSON-файл и импортируйте его для полного восстановления товаров, полуфабрикатов и эталонных ТТК.</p>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button onClick={() => downloadJson('klevo-ttk-backup.json', backup)} style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Экспорт всей базы</button>
+          <label style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Импорт резервной копии<input type="file" accept=".json,application/json" onChange={e => importBackup(e.target.files?.[0])} style={{ display:'none' }} /></label>
+        </div>
+        {message && <div style={{ marginTop:12, color:'#475569' }}>{message}</div>}
+      </section>
+    </div>
+  )
 }
 
 export default function App() {
-  const [section, setSection] = useState('dashboard')
-  const { dishes, pf, disc, loading, error } = useData()
+  const [section, setSection] = useState('ttk')
+  const [selectedId, setSelectedId] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const { items, saveTtk, deleteTtk, duplicateTtk, replaceItems: replaceTtkItems } = useReferenceTtkStore()
+  const { items: nomenclature, saveItem: saveNomenclatureItem, deleteItem: deleteNomenclatureItem, importItems: importNomenclatureItems, replaceItems: replaceNomenclatureItems } = useNomenclatureStore()
 
-  if (loading) return <Loading />
-  if (error)   return <ErrorScreen msg={error} />
+  const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
+  const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || '🍽 Эталонные ТТК'
+
+  function openItem(item) {
+    setSelectedId(item.id)
+    setEditing(null)
+    setSection('ttk-view')
+  }
+
+  function editItem(item) {
+    setEditing(item)
+    setSection('ttk-create')
+  }
+
+  function createItem() {
+    setEditing(createEmptyReferenceTtk())
+    setSection('ttk-create')
+  }
+
+  function handleSave(form) {
+    const saved = saveTtk(form)
+    setSelectedId(saved.id)
+    setEditing(null)
+    setSection('ttk-view')
+  }
+
+  function handleDuplicate() {
+    const copy = duplicateTtk(selected?.id)
+    if (copy) openItem(copy)
+  }
+
+  function handleDelete() {
+    if (!selected) return
+    deleteTtk(selected.id)
+    setSelectedId(null)
+    setSection('ttk')
+  }
+
+  function restoreBackup(payload) {
+    replaceTtkItems(payload.referenceTtk)
+    replaceNomenclatureItems(payload.nomenclature)
+    setSelectedId(null)
+    setEditing(null)
+    setSection('ttk')
+  }
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
-
-      {/* ── Sidebar ── */}
-      <div style={{ width:216, background:'#0f172a', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top:0, height:'100vh', overflowY:'auto' }}>
-        <div style={{ padding:'22px 18px 18px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
-          <div style={{ fontSize:21, fontWeight:900, color:'#fff', letterSpacing:-1, lineHeight:1 }}>Академия</div>
-          <div style={{ fontSize:12, fontWeight:800, color:'#6366f1', letterSpacing:3, textTransform:'uppercase', marginTop:2 }}>Клёво</div>
-          <div style={{ marginTop:8, fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:1 }}>v1.0 · База знаний сети</div>
+      <aside style={{ width:236, background:'#0f172a', color:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
+        <div style={{ padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
+          <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>КЛЁВО</div>
+          <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Конструктор эталонных ТТК</div>
         </div>
-
-        <nav style={{ flex:1, padding:'10px 8px' }}>
-          {NAV_ITEMS.map(n => {
-            const active = section === n.id
-            const NavIcon = NAV_ICONS[n.id]
+        <nav style={{ padding:10, flex:1 }}>
+          {NAV_ITEMS.map(item => {
+            const active = section === item.id || (item.id === 'ttk' && ['ttk-view', 'ttk-create'].includes(section))
             return (
-              <button key={n.id} onClick={() => setSection(n.id)} style={{
-                width:'100%', display:'flex', alignItems:'center', gap:9, padding:'9px 11px',
-                borderRadius:8, border:'none', cursor:'pointer', marginBottom:1,
-                background: active ? '#6366f1' : 'transparent',
-                color: active ? '#fff' : '#94a3b8',
-                fontSize:13, fontWeight: active ? 700 : 500, textAlign:'left',
-                transition:'all .1s',
-              }}
-              onMouseEnter={e => { if (!active) { e.currentTarget.style.background='rgba(255,255,255,.06)'; e.currentTarget.style.color='#e2e8f0' }}}
-              onMouseLeave={e => { if (!active) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#94a3b8' }}}
-              >
-                <span style={{ opacity: active ? 1 : .8, flexShrink:0 }}><NavIcon /></span>
-                <span style={{ flex:1 }}>{n.label}</span>
-                {n.badge != null && (
-                  <span style={{
-                    background: n.badgeRed ? '#ef4444' : active ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.1)',
-                    color:'#fff', fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10,
-                  }}>{n.badge}</span>
-                )}
+              <button key={item.id} onClick={() => setSection(item.id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'11px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:4, textAlign:'left', background:active ? '#6366f1' : 'transparent', color:active ? '#fff' : '#cbd5e1', fontWeight:active ? 800 : 600, fontSize:13 }}>
+                <SafeIcon icon={item.icon} />{item.label}
               </button>
             )
           })}
         </nav>
-
-        <div style={{ padding:'12px 14px', borderTop:'1px solid rgba(255,255,255,.07)', fontSize:10, color:'#334155', lineHeight:1.7 }}>
-          <div>РОСТОВ · САХАЛИН · СОЧИ</div>
-          <div>{SUMMARY.totalTTK} ТТК · {pf.length} п/ф</div>
-          <div>Аудит: июнь 2026</div>
+        <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
+          {items.length} эталонных ТТК<br />{nomenclature.filter(item => item.type === 'product').length} товаров<br />{nomenclature.filter(item => ['semifinished', 'sauce', 'prep'].includes(item.type)).length} полуфабрикатов
         </div>
-      </div>
+      </aside>
 
-      {/* ── Main ── */}
-      <div style={{ flex:1, overflow:'auto', minWidth:0 }}>
-
-        {/* Topbar */}
-        <div style={{ background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'14px 26px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
-          <div style={{ fontSize:16, fontWeight:800, color:'#0f172a' }}>
-            {NAV_ITEMS.find(n => n.id === section)?.label}
-          </div>
-          <div style={{ display:'flex', gap:7 }}>
-            <Tag color="#ef4444" bg="#fef2f2">{Ico.warn} {SUMMARY.withErrors} ошибок</Tag>
-            <Tag color="#16a34a" bg="#f0fdf4">{Ico.check} {SUMMARY.cleanTTK} чистых</Tag>
-          </div>
+      <main style={{ flex:1, minWidth:0 }}>
+        <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{section === 'ttk-view' ? selected?.title || 'Карточка ТТК' : pageTitle}</div>
+          <Tag color="#6366f1" bg="#eef2ff">Импорт справочников → ТТК → Фото → Печать</Tag>
+        </header>
+        <div style={{ padding:28 }}>
+          {section === 'products' && <CatalogPage mode="products" items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
+          {section === 'semifinished' && <CatalogPage mode="semifinished" items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
+          {section === 'ttk' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={item => downloadJson(`${item.title || 'reference-ttk'}.json`, item)} />}
+          {section === 'ttk-create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onCancel={() => setSection('ttk')} onSave={handleSave} />}
+          {section === 'ttk-view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('ttk')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
+          {section === 'settings' && <Settings ttkItems={items} nomenclature={nomenclature} onRestore={restoreBackup} />}
         </div>
-
-        {/* Content */}
-        <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Dashboard   dishes={dishes} pf={pf} go={setSection} />}
-          {section === 'dishes'      && <Dishes       dishes={dishes} />}
-          {section === 'pf'          && <PF           pf={pf} />}
-          {section === 'stations'    && <Stations     dishes={dishes} />}
-          {section === 'photos'      && <Photos       dishes={dishes} />}
-          {section === 'audit'       && <Audit        dishes={dishes} disc={disc} />}
-          {section === 'attestation' && <Attestation />}
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
