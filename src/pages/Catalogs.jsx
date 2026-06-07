@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { NOMENCLATURE_TYPE_LABELS, PRODUCT_FILTERS, SEMIFINISHED_FILTERS, createEmptyNomenclatureItem } from '../hooks/useNomenclature.js'
+import { createEmptyProduct } from '../storage/productsStore.js'
+import { SEMIFINISHED_FILTERS, SEMIFINISHED_TYPE_LABELS, createEmptySemifinished } from '../storage/semifinishedStore.js'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 
 const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
@@ -7,8 +8,7 @@ const FIELD = { display:'flex', flexDirection:'column', gap:6 }
 const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
 const TEXTAREA = { width:'100%', boxSizing:'border-box', minHeight:84, border:'1.5px solid #e5e7eb', borderRadius:12, padding:12, fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }
 const PRIMARY = { ...SEL_ST, background:'#6366f1', borderColor:'#6366f1', color:'#fff', fontWeight:900, padding:'11px 16px' }
-const PRODUCT_TYPES = ['product']
-const SEMI_TYPES = ['semifinished', 'sauce', 'prep']
+const PRODUCT_FILTERS = [{ value: 'all', label: 'Все' }]
 
 function parseCsv(text) {
   const rows = []
@@ -86,10 +86,10 @@ function fileToPayload(file) {
 }
 
 function ProductForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(() => initial || createEmptyNomenclatureItem('product'))
+  const [form, setForm] = useState(() => initial || createEmptyProduct())
   const update = (field, value) => setForm(current => ({ ...current, [field]: value }))
   return (
-    <form onSubmit={e => { e.preventDefault(); onSave({ ...form, type:'product' }) }} style={{ ...SECTION, display:'flex', flexDirection:'column', gap:12 }}>
+    <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ ...SECTION, display:'flex', flexDirection:'column', gap:12 }}>
       <h2 style={{ margin:0 }}>{initial ? 'Редактировать товар' : 'Добавить товар'}</h2>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
         <TextField label="Наименование" value={form.name} onChange={v => update('name', v)} />
@@ -103,7 +103,7 @@ function ProductForm({ initial, onSave, onCancel }) {
 }
 
 function SemifinishedForm({ initial, products, onSave, onCancel }) {
-  const [form, setForm] = useState(() => initial || createEmptyNomenclatureItem('semifinished'))
+  const [form, setForm] = useState(() => initial || createEmptySemifinished())
   const update = (field, value) => setForm(current => ({ ...current, [field]: value }))
   const addIngredient = product => {
     if (!product) return
@@ -129,9 +129,8 @@ function SemifinishedForm({ initial, products, onSave, onCancel }) {
   )
 }
 
-export function CatalogPage({ mode, items, onSave, onDelete, onImport }) {
+export function CatalogPage({ mode, items, products = [], onSave, onDelete, onImport }) {
   const isProducts = mode === 'products'
-  const allowedTypes = isProducts ? PRODUCT_TYPES : SEMI_TYPES
   const filters = isProducts ? PRODUCT_FILTERS : SEMIFINISHED_FILTERS
   const title = isProducts ? '📦 Товары' : '🥣 Полуфабрикаты'
   const subtitle = isProducts ? 'Справочник товарной номенклатуры для составления полуфабрикатов.' : 'Справочник полуфабрикатов, соусов и заготовок для эталонных ТТК.'
@@ -140,17 +139,14 @@ export function CatalogPage({ mode, items, onSave, onDelete, onImport }) {
   const [editing, setEditing] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [message, setMessage] = useState('')
-  const products = items.filter(item => item.type === 'product')
-
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return items.filter(item => {
-      const matchesMode = allowedTypes.includes(item.type)
-      const matchesType = type === 'all' || item.type === type
+      const matchesType = isProducts || type === 'all' || item.type === type
       const haystack = [item.name, item.category, item.categoryPath, item.unit, item.comment, item.description, item.composition, item.cookingMethod].join(' ').toLowerCase()
-      return matchesMode && matchesType && (!needle || haystack.includes(needle))
+      return matchesType && (!needle || haystack.includes(needle))
     })
-  }, [items, allowedTypes, query, type])
+  }, [items, isProducts, query, type])
 
   async function handleImport(file) {
     if (!file) return
@@ -190,7 +186,7 @@ export function CatalogPage({ mode, items, onSave, onDelete, onImport }) {
       {showForm && (isProducts ? <ProductForm initial={editing} onSave={save} onCancel={() => setShowForm(false)} /> : <SemifinishedForm initial={editing} products={products} onSave={save} onCancel={() => setShowForm(false)} />)}
       <section style={SECTION}>
         <h2 style={{ marginTop:0 }}>Позиции ({visible.length})</h2>
-        {visible.length === 0 ? <div style={{ color:'#94a3b8', textAlign:'center', padding:28 }}>Пока нет данных</div> : <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}><thead><tr>{(isProducts ? ['Наименование','Ед. изм.','Категория','Комментарий',''] : ['Название','Тип','Выход','Состав','Статус','']).map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead><tbody>{visible.map(item => <tr key={item.id}>{isProducts ? <><td style={TD}><b>{item.name}</b></td><td style={TD}>{item.unit}</td><td style={TD}>{item.category || '—'}</td><td style={TD}>{item.comment || item.description || '—'}</td></> : <><td style={TD}><b>{item.name}</b></td><td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{NOMENCLATURE_TYPE_LABELS[item.type]}</Tag></td><td style={TD}>{item.output || '—'}</td><td style={TD}>{item.composition || '—'}</td><td style={TD}>{item.status || 'draft'}</td></>}<td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></td></tr>)}</tbody></table></div>}
+        {visible.length === 0 ? <div style={{ color:'#94a3b8', textAlign:'center', padding:28 }}>Пока нет данных</div> : <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}><thead><tr>{(isProducts ? ['Наименование','Ед. изм.','Категория','Комментарий',''] : ['Название','Тип','Выход','Состав','Статус','']).map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead><tbody>{visible.map(item => <tr key={item.id}>{isProducts ? <><td style={TD}><b>{item.name}</b></td><td style={TD}>{item.unit}</td><td style={TD}>{item.category || '—'}</td><td style={TD}>{item.comment || item.description || '—'}</td></> : <><td style={TD}><b>{item.name}</b></td><td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{SEMIFINISHED_TYPE_LABELS[item.type]}</Tag></td><td style={TD}>{item.output || '—'}</td><td style={TD}>{item.composition || '—'}</td><td style={TD}>{item.status || 'draft'}</td></>}<td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></td></tr>)}</tbody></table></div>}
       </section>
     </div>
   )

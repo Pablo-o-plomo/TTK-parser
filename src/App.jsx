@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Tag } from './components/ui.jsx'
 import { BookIcon, BowlIcon, ClipIcon, GraduationIcon } from './components/icons.jsx'
-import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
-import { useNomenclatureStore } from './hooks/useNomenclature.js'
+import { createEmptyReferenceTtk, useReferenceTtkStore } from './storage/referenceTtkStore.js'
+import { useProductsStore } from './storage/productsStore.js'
+import { useSemifinishedStore } from './storage/semifinishedStore.js'
+import { makeBackup, normalizeBackup } from './storage/backupStore.js'
 import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
 import { CatalogPage } from './pages/Catalogs.jsx'
 
@@ -36,15 +38,15 @@ function readFileAsText(file) {
   })
 }
 
-function Settings({ ttkItems, nomenclature, onRestore }) {
+function Settings({ products, semifinished, referenceTtks, onRestore, onClear }) {
   const [message, setMessage] = useState('')
-  const backup = { version: 1, exportedAt: new Date().toISOString(), referenceTtk: ttkItems, nomenclature }
+  const backup = makeBackup({ products, semifinished, referenceTtks })
 
   async function importBackup(file) {
     if (!file) return
     try {
       const parsed = JSON.parse(await readFileAsText(file))
-      onRestore({ referenceTtk: parsed.referenceTtk || parsed.ttk || [], nomenclature: parsed.nomenclature || [] })
+      onRestore(normalizeBackup(parsed))
       setMessage('База восстановлена из JSON')
     } catch {
       setMessage('Не удалось восстановить базу. Проверьте JSON-файл резервной копии.')
@@ -68,9 +70,9 @@ function Settings({ ttkItems, nomenclature, onRestore }) {
         <h2 style={{ marginTop:0 }}>Резервное копирование</h2>
         <p style={{ color:'#64748b' }}>Экспортируйте всю базу в один JSON-файл и импортируйте его для полного восстановления товаров, полуфабрикатов и эталонных ТТК.</p>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button onClick={() => downloadJson('klevo-ttk-backup.json', backup)} style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Экспорт всей базы</button>
-          <label style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Импорт резервной копии<input type="file" accept=".json,application/json" onChange={e => importBackup(e.target.files?.[0])} style={{ display:'none' }} /></label>
-        </div>
+          <button onClick={() => downloadJson('klevo-ttk-backup.json', backup)} style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Скачать всю базу JSON</button>
+          <label style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #cbd5e1', background:'#fff', cursor:'pointer', fontWeight:800 }}>Загрузить базу JSON<input type="file" accept=".json,application/json" onChange={e => importBackup(e.target.files?.[0])} style={{ display:'none' }} /></label>
+        <button onClick={onClear} style={{ padding:'10px 14px', borderRadius:10, border:'1px solid #fecaca', color:'#dc2626', background:'#fff', cursor:'pointer', fontWeight:800 }}>Очистить базу</button></div>
         {message && <div style={{ marginTop:12, color:'#475569' }}>{message}</div>}
       </section>
     </div>
@@ -82,7 +84,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [editing, setEditing] = useState(null)
   const { items, saveTtk, deleteTtk, duplicateTtk, replaceItems: replaceTtkItems } = useReferenceTtkStore()
-  const { items: nomenclature, saveItem: saveNomenclatureItem, deleteItem: deleteNomenclatureItem, importItems: importNomenclatureItems, replaceItems: replaceNomenclatureItems } = useNomenclatureStore()
+  const { items: products, saveItem: saveProduct, deleteItem: deleteProduct, importItems: importProducts, replaceItems: replaceProducts } = useProductsStore()
+  const { items: semifinished, saveItem: saveSemifinished, deleteItem: deleteSemifinished, importItems: importSemifinished, replaceItems: replaceSemifinished } = useSemifinishedStore()
+  const nomenclature = useMemo(() => [...products.map(item => ({ ...item, type: 'product' })), ...semifinished], [products, semifinished])
 
   const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
   const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || '🍽 Эталонные ТТК'
@@ -123,8 +127,9 @@ export default function App() {
   }
 
   function restoreBackup(payload) {
-    replaceTtkItems(payload.referenceTtk)
-    replaceNomenclatureItems(payload.nomenclature)
+    replaceTtkItems(payload.referenceTtks)
+    replaceProducts(payload.products)
+    replaceSemifinished(payload.semifinished)
     setSelectedId(null)
     setEditing(null)
     setSection('ttk')
@@ -148,7 +153,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
-          {items.length} эталонных ТТК<br />{nomenclature.filter(item => item.type === 'product').length} товаров<br />{nomenclature.filter(item => ['semifinished', 'sauce', 'prep'].includes(item.type)).length} полуфабрикатов
+          {items.length} эталонных ТТК<br />{products.length} товаров<br />{semifinished.length} полуфабрикатов
         </div>
       </aside>
 
@@ -158,12 +163,12 @@ export default function App() {
           <Tag color="#6366f1" bg="#eef2ff">Импорт справочников → ТТК → Фото → Печать</Tag>
         </header>
         <div style={{ padding:28 }}>
-          {section === 'products' && <CatalogPage mode="products" items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
-          {section === 'semifinished' && <CatalogPage mode="semifinished" items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
+          {section === 'products' && <CatalogPage mode="products" items={products} products={products} onSave={saveProduct} onDelete={deleteProduct} onImport={importProducts} />}
+          {section === 'semifinished' && <CatalogPage mode="semifinished" items={semifinished} products={products} onSave={saveSemifinished} onDelete={deleteSemifinished} onImport={importSemifinished} />}
           {section === 'ttk' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={item => downloadJson(`${item.title || 'reference-ttk'}.json`, item)} />}
           {section === 'ttk-create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onCancel={() => setSection('ttk')} onSave={handleSave} />}
           {section === 'ttk-view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('ttk')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
-          {section === 'settings' && <Settings ttkItems={items} nomenclature={nomenclature} onRestore={restoreBackup} />}
+          {section === 'settings' && <Settings products={products} semifinished={semifinished} referenceTtks={items} onRestore={restoreBackup} onClear={() => restoreBackup({ products: [], semifinished: [], referenceTtks: [] })} />}
         </div>
       </main>
     </div>
