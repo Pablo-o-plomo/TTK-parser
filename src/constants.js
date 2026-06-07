@@ -88,15 +88,7 @@ export const PHOTO_SLOTS = [
 
 // ─── НАВИГАЦИЯ ────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
-  { id: "dashboard",    label: "Главная",           badge: null, badgeRed: false },
-  { id: "network",      label: "Сеть ресторанов",   badge: null, badgeRed: false },
-  { id: "dishes",       label: "Блюда",             badge: 1568, badgeRed: false },
-  { id: "comparison",   label: "Сверка ТТК",        badge: null, badgeRed: false },
-  { id: "review",       label: "Задания",           badge: null, badgeRed: false },
-  { id: "uploads",      label: "Загрузки ТТК",      badge: null, badgeRed: false },
-  { id: "photos",       label: "Фотоэталоны",       badge: null, badgeRed: false },
-  { id: "pf",           label: "Полуфабрикаты",     badge: null, badgeRed: false },
-  { id: "audit",        label: "Аудит",             badge: 466,  badgeRed: true  },
-  { id: "analytics",    label: "Аналитика",         badge: null, badgeRed: false },
-  { id: "settings",     label: "Настройки",         badge: null, badgeRed: false },
+  { id: "list",     label: "Эталонные ТТК", badge: null, badgeRed: false },
+  { id: "create",   label: "Создать ТТК",   badge: null, badgeRed: false },
+  { id: "settings", label: "Настройки",     badge: null, badgeRed: false },
 ];

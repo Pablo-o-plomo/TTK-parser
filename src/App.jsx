@@ -1,183 +1,129 @@
-import { cloneElement, isValidElement, useMemo, useState } from 'react'
-import { useData } from './hooks/useData.js'
-import { useWorkflowStore } from './hooks/useWorkflowStore.js'
-import { Loading, ErrorScreen, Tag } from './components/ui.jsx'
-import {
-  BookIcon,
-  BowlIcon,
-  CameraIcon,
-  ClipIcon,
-  FireIcon,
-  GraduationIcon,
-  GridIcon,
-  Ico,
-} from './components/icons.jsx'
-import { NAV_ITEMS } from './constants.js'
-import { NETWORK_RESTAURANTS } from './domain/workflow.js'
+import { useMemo, useState } from 'react'
+import { Tag } from './components/ui.jsx'
+import { BookIcon, ClipIcon, GraduationIcon } from './components/icons.jsx'
+import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
+import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
 
-import Dashboard   from './pages/Dashboard.jsx'
-import Network     from './pages/Network.jsx'
-import Dishes      from './pages/Dishes.jsx'
-import Comparison  from './pages/Comparison.jsx'
-import ReviewTasks from './pages/ReviewTasks.jsx'
-import TaskSubmission from './pages/TaskSubmission.jsx'
-import Uploads from './pages/Uploads.jsx'
-import PF          from './pages/PF.jsx'
-import Stations    from './pages/Stations.jsx'
-import Photos      from './pages/Photos.jsx'
-import Audit       from './pages/Audit.jsx'
-import Attestation from './pages/Attestation.jsx'
+const NAV_ITEMS = [
+  { id: 'list', label: 'Эталонные ТТК', icon: BookIcon },
+  { id: 'create', label: 'Создать ТТК', icon: ClipIcon },
+  { id: 'settings', label: 'Настройки', icon: GraduationIcon },
+]
 
-const NAV_ICONS = {
-  dashboard:   GridIcon,
-  network:     FireIcon,
-  dishes:      BookIcon,
-  comparison:  ClipIcon,
-  review:      GraduationIcon,
-  uploads:     ClipIcon,
-  analytics:   GridIcon,
-  settings:    GraduationIcon,
-  pf:          BowlIcon,
-  stations:    FireIcon,
-  photos:      CameraIcon,
-  audit:       ClipIcon,
-  attestation: GraduationIcon,
+function SafeIcon({ icon: Icon }) {
+  return typeof Icon === 'function' ? <Icon /> : null
 }
 
-function SafeIcon({ icon: Icon, ...props }) {
-  if (typeof Icon === 'function') return <Icon {...props} />
-  if (isValidElement(Icon)) return cloneElement(Icon, props)
-  return null
+function downloadJson(item) {
+  const blob = new Blob([JSON.stringify(item, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${item.title || 'reference-ttk'}.json`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function Settings() {
+  return (
+    <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24, maxWidth:760 }}>
+      <h1 style={{ margin:'0 0 8px', color:'#0f172a' }}>Настройки</h1>
+      <p style={{ color:'#64748b', lineHeight:1.6 }}>
+        Данные эталонных ТТК временно хранятся в localStorage браузера. Для подготовки новой карты загрузите исходный PDF/XLSX,
+        проанализируйте его в ChatGPT отдельно и вставьте готовые тексты в форму “Создать ТТК”.
+      </p>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
+        <Tag color="#6366f1" bg="#eef2ff">Простой конструктор</Tag>
+        <Tag color="#16a34a" bg="#f0fdf4">Без CRM и заданий</Tag>
+        <Tag color="#d97706" bg="#fffbeb">Скачивание HTML/JSON/PDF через печать</Tag>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
-  const [section, setSection] = useState('dashboard')
-  const [selectedRestaurant, setSelectedRestaurant] = useState('all')
-  const [referenceRestaurant, setReferenceRestaurant] = useState('Петровка')
-  const { tasks, manualLinks, uploads, createTask, submitTask, updateTaskStatus, addManualLink, addUpload } = useWorkflowStore()
-  const { dishes, pf, disc, loading, error } = useData()
+  const [section, setSection] = useState('list')
+  const [selectedId, setSelectedId] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const { items, saveTtk, deleteTtk, duplicateTtk } = useReferenceTtkStore()
 
-  const restaurantCounts = useMemo(() => dishes.reduce((acc, dish) => {
-    acc[dish.restaurant] = (acc[dish.restaurant] || 0) + 1
-    return acc
-  }, {}), [dishes])
+  const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
+  const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || 'Эталонные ТТК'
 
-  const visibleDishes = useMemo(() => (
-    selectedRestaurant === 'all'
-      ? dishes
-      : dishes.filter(dish => dish.restaurant === selectedRestaurant)
-  ), [dishes, selectedRestaurant])
+  function openItem(item) {
+    setSelectedId(item.id)
+    setEditing(null)
+    setSection('view')
+  }
 
-  const visibleErrors = useMemo(() => visibleDishes.filter(dish => dish.hasErrors).length, [visibleDishes])
-  const visibleClean = visibleDishes.length - visibleErrors
-  const taskMatch = window.location.pathname.match(/^\/tasks?\/([^/]+)/)
-  const taskForRestaurant = taskMatch ? tasks.find(task => task.id === taskMatch[1]) : null
+  function editItem(item) {
+    setEditing(item)
+    setSection('create')
+  }
 
-  if (taskMatch) return <TaskSubmission task={taskForRestaurant} submitTask={submitTask} />
+  function createItem() {
+    setEditing(createEmptyReferenceTtk())
+    setSection('create')
+  }
 
-  if (loading) return <Loading />
-  if (error)   return <ErrorScreen msg={error} />
+  function handleSave(form) {
+    const saved = saveTtk(form)
+    setSelectedId(saved.id)
+    setEditing(null)
+    setSection('view')
+  }
+
+  function handleDuplicate() {
+    const copy = duplicateTtk(selected?.id)
+    if (copy) openItem(copy)
+  }
+
+  function handleDelete() {
+    if (!selected) return
+    deleteTtk(selected.id)
+    setSelectedId(null)
+    setSection('list')
+  }
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
-
-      {/* ── Sidebar ── */}
-      <div style={{ width:216, background:'#0f172a', display:'flex', flexDirection:'column', flexShrink:0, position:'sticky', top:0, height:'100vh', overflowY:'auto' }}>
-        <div style={{ padding:'22px 18px 18px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
-          <div style={{ fontSize:21, fontWeight:900, color:'#fff', letterSpacing:-1, lineHeight:1 }}>Академия</div>
-          <div style={{ fontSize:12, fontWeight:800, color:'#6366f1', letterSpacing:3, textTransform:'uppercase', marginTop:2 }}>Клёво</div>
-          <div style={{ marginTop:8, fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:1 }}>v1.0 · База знаний сети</div>
+      <aside style={{ width:236, background:'#0f172a', color:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
+        <div style={{ padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
+          <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>Академия Клёво</div>
+          <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Эталонная технологическая карта</div>
         </div>
-
-        <nav style={{ flex:1, padding:'10px 8px' }}>
-          {NAV_ITEMS.map(n => {
-            const active = section === n.id
-            const NavIcon = NAV_ICONS[n.id]
+        <nav style={{ padding:10, flex:1 }}>
+          {NAV_ITEMS.map(item => {
+            const active = section === item.id || (item.id === 'list' && section === 'view')
             return (
-              <button key={n.id} onClick={() => setSection(n.id)} style={{
-                width:'100%', display:'flex', alignItems:'center', gap:9, padding:'9px 11px',
-                borderRadius:8, border:'none', cursor:'pointer', marginBottom:1,
-                background: active ? '#6366f1' : 'transparent',
-                color: active ? '#fff' : '#94a3b8',
-                fontSize:13, fontWeight: active ? 700 : 500, textAlign:'left',
-                transition:'all .1s',
-              }}
-              onMouseEnter={e => { if (!active) { e.currentTarget.style.background='rgba(255,255,255,.06)'; e.currentTarget.style.color='#e2e8f0' }}}
-              onMouseLeave={e => { if (!active) { e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#94a3b8' }}}
-              >
-                <span style={{ opacity: active ? 1 : .8, flexShrink:0 }}><SafeIcon icon={NavIcon} /></span>
-                <span style={{ flex:1 }}>{n.label}</span>
-                {n.badge != null && (
-                  <span style={{
-                    background: n.badgeRed ? '#ef4444' : active ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.1)',
-                    color:'#fff', fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:10,
-                  }}>{n.badge}</span>
-                )}
+              <button key={item.id} onClick={() => item.id === 'create' ? createItem() : setSection(item.id)} style={{
+                width:'100%', display:'flex', alignItems:'center', gap:10, padding:'11px 12px', borderRadius:10,
+                border:'none', cursor:'pointer', marginBottom:4, textAlign:'left', background:active ? '#6366f1' : 'transparent',
+                color:active ? '#fff' : '#cbd5e1', fontWeight:active ? 800 : 600, fontSize:13,
+              }}>
+                <SafeIcon icon={item.icon} />
+                {item.label}
               </button>
             )
           })}
         </nav>
-
-        <div style={{ padding:'12px 14px', borderTop:'1px solid rgba(255,255,255,.07)', fontSize:10, color:'#334155', lineHeight:1.7 }}>
-          <div>Петровка · Ростов · Сочи · Краснодар · Авиапарк</div>
-          <div>{dishes.length} ТТК · {pf.length} п/ф</div>
-          <div>Аудит: июнь 2026</div>
+        <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
+          {items.length} эталонных ТТК<br />localStorage · без backend
         </div>
-      </div>
+      </aside>
 
-      {/* ── Main ── */}
-      <div style={{ flex:1, overflow:'auto', minWidth:0 }}>
-
-        {/* Topbar */}
-        <div style={{ background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'14px 26px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
-          <div style={{ fontSize:16, fontWeight:800, color:'#0f172a' }}>
-            {NAV_ITEMS.find(n => n.id === section)?.label}
-          </div>
-          <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', justifyContent:'flex-end' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#475569' }}>
-              Фильтр
-              <select
-                value={selectedRestaurant}
-                onChange={e => setSelectedRestaurant(e.target.value)}
-                style={{ border:'1px solid #dbe3ea', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:700, color:'#0f172a', background:'#fff', outline:'none' }}
-              >
-                <option value="all">Все рестораны ({dishes.length})</option>
-                {NETWORK_RESTAURANTS.map(restaurant => (
-                  <option key={restaurant} value={restaurant}>{restaurant} ({restaurantCounts[restaurant] || 0})</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#475569' }}>
-              Эталон
-              <select
-                value={referenceRestaurant}
-                onChange={e => setReferenceRestaurant(e.target.value)}
-                style={{ border:'1px solid #dbe3ea', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:700, color:'#0f172a', background:'#fff', outline:'none' }}
-              >
-                {NETWORK_RESTAURANTS.map(restaurant => <option key={restaurant} value={restaurant}>{restaurant}</option>)}
-              </select>
-            </label>
-            <Tag color="#ef4444" bg="#fef2f2">{Ico.warn} {visibleErrors} ошибок</Tag>
-            <Tag color="#16a34a" bg="#f0fdf4">{Ico.check} {visibleClean} чистых</Tag>
-          </div>
+      <main style={{ flex:1, minWidth:0 }}>
+        <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{section === 'view' ? selected?.title || 'Карточка ТТК' : pageTitle}</div>
+          <Tag color="#6366f1" bg="#eef2ff">Создал → заполнил → сохранил → скачал</Tag>
+        </header>
+        <div style={{ padding:28 }}>
+          {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={downloadJson} />}
+          {section === 'create' && <ReferenceTtkForm initial={editing} onCancel={() => setSection('list')} onSave={handleSave} />}
+          {section === 'view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('list')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
+          {section === 'settings' && <Settings />}
         </div>
-
-        {/* Content */}
-        <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Network     dishes={dishes} tasks={tasks} uploads={uploads} referenceRestaurant={referenceRestaurant} createTask={createTask} />}
-          {section === 'network'     && <Network     dishes={dishes} tasks={tasks} uploads={uploads} referenceRestaurant={referenceRestaurant} createTask={createTask} />}
-          {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
-          {section === 'comparison'  && <Comparison   dishes={dishes} tasks={tasks} manualLinks={manualLinks} addManualLink={addManualLink} createTask={createTask} referenceRestaurant={referenceRestaurant} setReferenceRestaurant={setReferenceRestaurant} />}
-          {section === 'review'      && <ReviewTasks  tasks={tasks} updateTaskStatus={updateTaskStatus} />}
-          {section === 'uploads'     && <Uploads      uploads={uploads} addUpload={addUpload} dishes={dishes} />}
-          {section === 'pf'          && <PF           pf={pf} />}
-          {section === 'stations'    && <Stations     dishes={visibleDishes} />}
-          {section === 'photos'      && <Photos       dishes={visibleDishes} />}
-          {section === 'audit'       && <Audit        dishes={visibleDishes} disc={disc} />}
-          {section === 'analytics'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} uploads={uploads} go={setSection} />}
-          {section === 'settings'    && <Attestation />}
-        </div>
-      </div>
+      </main>
     </div>
   )
 }
