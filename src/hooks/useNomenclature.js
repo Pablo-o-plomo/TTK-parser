@@ -3,13 +3,55 @@ import { useCallback, useEffect, useState } from 'react'
 export const NOMENCLATURE_STORAGE_KEY = 'klevo_nomenclature'
 
 export const NOMENCLATURE_TYPES = [
-  'Товар',
-  'Полуфабрикат',
-  'Блюдо',
-  'Соус',
-  'Заготовка',
-  'Декор',
+  'product',
+  'semifinished',
+  'sauce',
+  'prep',
+  'decor',
+  'dish',
 ]
+
+export const NOMENCLATURE_TYPE_LABELS = {
+  product: 'Товар',
+  semifinished: 'Полуфабрикат',
+  sauce: 'Соус',
+  prep: 'Заготовка',
+  decor: 'Декор',
+  dish: 'Блюдо',
+}
+
+export const NOMENCLATURE_FILTERS = [
+  { value: 'all', label: 'Все' },
+  { value: 'product', label: 'Товары' },
+  { value: 'semifinished', label: 'Полуфабрикаты' },
+  { value: 'sauce', label: 'Соусы' },
+  { value: 'prep', label: 'Заготовки' },
+]
+
+const TYPE_ALIASES = {
+  product: 'product',
+  товар: 'product',
+  товары: 'product',
+  semifinished: 'semifinished',
+  'полуфабрикат': 'semifinished',
+  'полуфабрикаты': 'semifinished',
+  sauce: 'sauce',
+  соус: 'sauce',
+  соусы: 'sauce',
+  prep: 'prep',
+  заготовка: 'prep',
+  заготовки: 'prep',
+  decor: 'decor',
+  декор: 'decor',
+  dish: 'dish',
+  блюдо: 'dish',
+  блюда: 'dish',
+}
+
+function normalizeNomenclatureType(type) {
+  const key = String(type || '').trim().toLowerCase()
+  return TYPE_ALIASES[key] || 'product'
+}
 
 function nowIso() {
   return new Date().toISOString()
@@ -24,7 +66,7 @@ export function createEmptyNomenclatureItem() {
   return {
     id: makeNomenclatureId(),
     name: '',
-    type: 'Товар',
+    type: 'product',
     category: '',
     categoryPath: '',
     unit: 'г',
@@ -42,7 +84,7 @@ export function normalizeNomenclatureItem(item = {}) {
   return {
     id: item.id || makeNomenclatureId(),
     name: item.name || '',
-    type: NOMENCLATURE_TYPES.includes(item.type) ? item.type : 'Товар',
+    type: normalizeNomenclatureType(item.type),
     category: item.category || '',
     categoryPath: item.categoryPath || '',
     unit: item.unit || 'г',

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
+import { NOMENCLATURE_TYPE_LABELS } from '../hooks/useNomenclature.js'
 
 const STATUS_LABELS = {
   draft: 'Черновик',
@@ -170,13 +171,15 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
       return
     }
 
+    const shouldFillDetails = ['semifinished', 'sauce', 'prep'].includes(item.type)
+
     setForm(current => ({
       ...current,
       rows: current.rows.map((row, i) => i === index ? {
         ...row,
         name: item.name,
-        semifinished: item.type === 'Полуфабрикат' || item.composition ? item.composition : row.semifinished,
-        description: item.cookingMethod || item.description || row.description,
+        semifinished: shouldFillDetails && item.composition ? item.composition : row.semifinished,
+        description: shouldFillDetails && item.cookingMethod ? item.cookingMethod : row.description,
       } : row),
     }))
   }
@@ -186,7 +189,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     const unit = row.qty?.replace(/[0-9.,\s]/g, '').trim() || 'г'
     onSaveNomenclatureItem({
       name: row.name.trim(),
-      type: row.semifinished ? 'Полуфабрикат' : 'Товар',
+      type: row.semifinished ? 'semifinished' : 'product',
       category: '',
       unit,
       description: row.description || '',
@@ -224,7 +227,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
       </section>
 
       <section style={SECTION}>
-        <datalist id="nomenclature-options">{nomenclature.map(item => <option key={item.id} value={item.name}>{item.type} · {item.unit}</option>)}</datalist>
+        <datalist id="nomenclature-options">{nomenclature.map(item => <option key={item.id} value={item.name}>{NOMENCLATURE_TYPE_LABELS[item.type] || item.type} · {item.unit}</option>)}</datalist>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:12 }}>
           <div>
             <h2 style={{ margin:'0 0 4px' }}>Строки ТТК</h2>

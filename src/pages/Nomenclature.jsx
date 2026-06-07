@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { NOMENCLATURE_TYPES, createEmptyNomenclatureItem } from '../hooks/useNomenclature.js'
+import { NOMENCLATURE_FILTERS, NOMENCLATURE_TYPE_LABELS, NOMENCLATURE_TYPES, createEmptyNomenclatureItem } from '../hooks/useNomenclature.js'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 
 const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
@@ -93,7 +93,7 @@ function NomenclatureForm({ initial, onSave, onCancel }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:12 }}>
         <TextField label="Название" value={form.name} onChange={v => update('name', v)} />
-        <Field label="Тип"><select value={form.type} onChange={e => update('type', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{NOMENCLATURE_TYPES.map(type => <option key={type}>{type}</option>)}</select></Field>
+        <Field label="Тип"><select value={form.type} onChange={e => update('type', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{NOMENCLATURE_TYPES.map(type => <option key={type} value={type}>{NOMENCLATURE_TYPE_LABELS[type]}</option>)}</select></Field>
         <TextField label="Категория" value={form.category} onChange={v => update('category', v)} />
         <TextField label="Путь категории" value={form.categoryPath} onChange={v => update('categoryPath', v)} />
         <TextField label="Ед. изм." value={form.unit} onChange={v => update('unit', v)} />
@@ -163,8 +163,7 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
       <section style={{ ...SECTION, display:'grid', gridTemplateColumns:'1fr 220px', gap:12 }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по названию, категории, описанию" style={INPUT} />
         <select value={type} onChange={e => setType(e.target.value)} style={{ ...SEL_ST, width:'100%' }}>
-          <option value="all">Все типы</option>
-          {NOMENCLATURE_TYPES.map(itemType => <option key={itemType} value={itemType}>{itemType}</option>)}
+          {NOMENCLATURE_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
         </select>
       </section>
 
@@ -185,7 +184,7 @@ export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
               <thead><tr>{['Название','Тип','Категория','Путь категории','Ед. изм.','Краткое описание',''].map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead>
               <tbody>{filtered.map(item => <tr key={item.id}>
                 <td style={{ ...TD, fontWeight:900, color:'#0f172a' }}>{item.name || 'Без названия'}</td>
-                <td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{item.type}</Tag></td>
+                <td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{NOMENCLATURE_TYPE_LABELS[item.type] || item.type}</Tag></td>
                 <td style={TD}>{item.category || '—'}</td>
                 <td style={TD}>{item.categoryPath || '—'}</td>
                 <td style={TD}>{item.unit || '—'}</td>
