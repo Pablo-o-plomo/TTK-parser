@@ -47,8 +47,8 @@ export const STA_STATS = {
 };
 
 // ─── ЦВЕТА И ИКОНКИ ───────────────────────────────────────────────────────
-export const REST_COLOR = { РОСТОВ: "#2563eb", САХАЛИН: "#b45309", СОЧИ: "#15803d" };
-export const REST_BG    = { РОСТОВ: "#eff6ff", САХАЛИН: "#fffbeb", СОЧИ: "#f0fdf4"  };
+export const REST_COLOR = { РОСТОВ: "#2563eb", Ростов: "#2563eb", Петровка: "#7c3aed", Краснодар: "#dc2626", Авиапарк: "#0891b2", САХАЛИН: "#b45309", Сахалин: "#b45309", СОЧИ: "#15803d", Сочи: "#15803d" };
+export const REST_BG    = { РОСТОВ: "#eff6ff", Ростов: "#eff6ff", Петровка: "#f5f3ff", Краснодар: "#fef2f2", Авиапарк: "#e0f2fe", САХАЛИН: "#fffbeb", Сахалин: "#fffbeb", СОЧИ: "#f0fdf4", Сочи: "#f0fdf4"  };
 
 export const CAT_ICONS = {
   "Рыба и морепродукты": "🐟", "Японская кухня": "🍣",  "Десерты": "🍰",
@@ -90,6 +90,9 @@ export const PHOTO_SLOTS = [
 export const NAV_ITEMS = [
   { id: "dashboard",    label: "Главная",        badge: null,            badgeRed: false },
   { id: "dishes",       label: "Блюда",          badge: 1568,            badgeRed: false },
+  { id: "comparison",   label: "Сверка ТТК",     badge: null,            badgeRed: false },
+  { id: "review",       label: "Проверка заданий", badge: null,          badgeRed: false },
+  { id: "uploads",     label: "Загрузки ТТК",   badge: null,            badgeRed: false },
   { id: "pf",           label: "Полуфабрикаты",  badge: null,            badgeRed: false },
   { id: "stations",     label: "Станции",        badge: null,            badgeRed: false },
   { id: "photos",       label: "Фотоэталоны",    badge: null,            badgeRed: false },
