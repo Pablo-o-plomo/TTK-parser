@@ -4,25 +4,19 @@ import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
 
 const STATUS_LABELS = {
   draft: 'Черновик',
-  in_progress: 'В работе',
-  approved: 'Эталон утверждён',
+  approved: 'Готова к печати',
 }
 
 const STATUS_COLORS = {
   draft: '#64748b',
-  in_progress: '#d97706',
   approved: '#16a34a',
 }
 
 const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
 const FIELD = { display:'flex', flexDirection:'column', gap:6 }
 const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
-const TEXTAREA = { width:'100%', boxSizing:'border-box', minHeight:130, border:'1.5px solid #e5e7eb', borderRadius:12, padding:12, fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }
 const PRIMARY = { ...SEL_ST, background:'#6366f1', borderColor:'#6366f1', color:'#fff', fontWeight:900, padding:'11px 16px' }
-
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
+const EMPTY_ROW = { qty: '', name: '', semifinished: '', description: '' }
 
 function formatDate(value) {
   if (!value) return '—'
@@ -48,20 +42,41 @@ function downloadBlob(name, content, type) {
   URL.revokeObjectURL(url)
 }
 
-function makeHtml(ttk) {
-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${ttk.title}</title><style>body{font-family:Arial,sans-serif;max-width:980px;margin:40px auto;color:#0f172a;line-height:1.55}h1{font-size:32px}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.box{border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:14px 0}.tag{display:inline-block;background:#eef2ff;color:#4f46e5;border-radius:999px;padding:4px 10px;font-weight:700;font-size:12px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:8px;text-align:left}img{max-width:100%;border-radius:16px}</style></head><body><span class="tag">${STATUS_LABELS[ttk.status] || ttk.status}</span><h1>${ttk.title}</h1>${ttk.photos?.main?.dataUrl ? `<img src="${ttk.photos.main.dataUrl}" alt="${ttk.title}">` : ''}<div class="meta"><div class="box"><b>Код</b><br>${ttk.ttkCode || '—'}</div><div class="box"><b>Ресторан</b><br>${ttk.restaurant || '—'}</div><div class="box"><b>Категория</b><br>${ttk.category || '—'}</div><div class="box"><b>Цех</b><br>${ttk.station || '—'}</div><div class="box"><b>Выход</b><br>${ttk.output || '—'}</div><div class="box"><b>Дата</b><br>${ttk.date || '—'}</div></div><section class="box"><h2>Описание</h2><p>${ttk.description || '—'}</p></section><section class="box"><h2>Состав</h2>${ingredientsTable(ttk)}</section><section class="box"><h2>Полуфабрикаты</h2>${semifinishedTable(ttk)}</section><section class="box"><h2>Способ приготовления</h2><p>${ttk.cookingMethod || '—'}</p></section><section class="box"><h2>Оформление и подача</h2><p>${ttk.plating || '—'}</p></section><section class="box"><h2>Контроль качества</h2><p>${ttk.qualityControl || '—'}</p></section><section class="box"><h2>Типичные ошибки</h2><p>${ttk.typicalMistakes || '—'}</p></section></body></html>`
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
 }
 
-function ingredientsTable(ttk) {
-  const rows = ttk.ingredients || []
-  if (!rows.length) return '<p>Ингредиенты не заполнены</p>'
-  return `<table><thead><tr><th>№</th><th>Наименование</th><th>Ед.</th><th>Брутто</th><th>Нетто</th><th>Готовый продукт</th><th>Нетто на порцию</th></tr></thead><tbody>${rows.map((row, i) => `<tr><td>${i + 1}</td><td>${row.name || ''}</td><td>${row.unit || ''}</td><td>${row.brutto || ''}</td><td>${row.netto || ''}</td><td>${row.readyWeight || ''}</td><td>${row.portionNetto || ''}</td></tr>`).join('')}</tbody></table>`
-}
+function makePrintableHtml(ttk) {
+  const rows = ttk.rows?.length ? ttk.rows : [EMPTY_ROW]
+  const rowsHtml = rows.map(row => `<tr><td>${escapeHtml(row.qty)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.semifinished)}</td><td>${escapeHtml(row.description)}</td></tr>`).join('')
+  const photoHtml = ttk.photo?.dataUrl ? `<img class="dish-photo" src="${ttk.photo.dataUrl}" alt="${escapeHtml(ttk.title)}">` : '<div class="photo-placeholder">Фото блюда</div>'
 
-function semifinishedTable(ttk) {
-  const rows = ttk.semifinished || []
-  if (!rows.length) return '<p>Полуфабрикаты не заполнены</p>'
-  return `<table><thead><tr><th>Название</th><th>Количество</th><th>Комментарий</th></tr></thead><tbody>${rows.map(row => `<tr><td>${row.name || ''}</td><td>${row.quantity || ''}</td><td>${row.comment || ''}</td></tr>`).join('')}</tbody></table>`
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(ttk.title || 'Эталонная ТТК')}</title><style>
+    @page{size:A4;margin:10mm}
+    *{box-sizing:border-box}
+    body{margin:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#111827}
+    .page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:13mm 12mm 12mm;display:flex;flex-direction:column;gap:8mm}
+    h1{margin:0;text-align:center;font-size:23px;line-height:1.15;text-transform:uppercase;letter-spacing:.02em}
+    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;line-height:1.25}
+    th,td{border:1.5px solid #111827;padding:6px 7px;vertical-align:top;word-break:break-word}
+    th{background:#f3f4f6;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+    th:nth-child(1),td:nth-child(1){width:18%;text-align:center;font-weight:700}
+    th:nth-child(2),td:nth-child(2){width:25%;font-weight:700}
+    th:nth-child(3),td:nth-child(3){width:29%}
+    th:nth-child(4),td:nth-child(4){width:28%}
+    .output{font-size:17px;font-weight:800;border:1.5px solid #111827;padding:8px 10px;width:max-content;min-width:190px}
+    .photo-wrap{margin-top:auto}
+    .dish-photo{width:100%;height:112mm;object-fit:cover;border:1.5px solid #111827;display:block}
+    .photo-placeholder{height:112mm;border:1.5px dashed #9ca3af;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:18px;background:#f9fafb}
+    .meta{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+    .date{font-size:11px;color:#6b7280}
+    @media print{body{background:#fff}.page{margin:0;width:auto;min-height:0;box-shadow:none}.no-print{display:none!important}}
+  </style></head><body><main class="page"><h1>${escapeHtml(ttk.title || 'Название блюда')}</h1><table><thead><tr><th>Кол-во</th><th>Наименование</th><th>П/ф</th><th>Описание</th></tr></thead><tbody>${rowsHtml}</tbody></table><div class="meta"><div class="output">Выход: ${escapeHtml(ttk.output || '—')}</div><div class="date">Обновлено: ${escapeHtml(formatDate(ttk.updatedAt))}</div></div><div class="photo-wrap">${photoHtml}</div></main></body></html>`
 }
 
 function TtkStatus({ status }) {
@@ -82,36 +97,36 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
       <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
         <div>
           <h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>Эталонные ТТК</h1>
-          <div style={{ color:'#64748b', fontSize:14 }}>Простой конструктор: создал → заполнил → загрузил фото → сохранил → скачал.</div>
+          <div style={{ color:'#64748b', fontSize:14 }}>Короткие печатные карты A4 для повара: строки, выход и фото подачи.</div>
         </div>
         <button onClick={onCreate} style={PRIMARY}>Создать ТТК</button>
       </div>
 
       {items.length === 0 ? (
         <div style={{ ...SECTION, textAlign:'center', padding:44 }}>
-          <div style={{ fontSize:46 }}>📋</div>
-          <h2 style={{ margin:'8px 0', color:'#0f172a' }}>Пока нет эталонных ТТК</h2>
-          <p style={{ color:'#64748b' }}>Создайте первую карточку и вручную вставьте тексты, подготовленные ChatGPT после анализа PDF/XLSX.</p>
+          <div style={{ fontSize:46 }}>📄</div>
+          <h2 style={{ margin:'8px 0', color:'#0f172a' }}>Пока нет печатных эталонных ТТК</h2>
+          <p style={{ color:'#64748b' }}>Создайте короткую карту: название, выход, строки таблицы и одно большое фото блюда.</p>
           <button onClick={onCreate} style={PRIMARY}>Создать первую ТТК</button>
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
           {items.map(item => (
             <div key={item.id} style={{ ...SECTION, padding:0, overflow:'hidden' }}>
-              <div style={{ height:170, background:'#f8fafc' }}><Photo file={item.photos?.main} label="Фото блюда" /></div>
+              <div style={{ height:180, background:'#f8fafc' }}><Photo file={item.photo} label="Фото блюда" /></div>
               <div style={{ padding:16 }}>
                 <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'flex-start' }}>
                   <h3 style={{ margin:'0 0 6px', fontSize:18, color:'#0f172a' }}>{item.title || 'Без названия'}</h3>
                   <TtkStatus status={item.status} />
                 </div>
                 <div style={{ color:'#64748b', fontSize:12, lineHeight:1.7 }}>
-                  {item.category || 'Категория не указана'} · {item.station || 'Цех не указан'}<br />
-                  Обновлено: {formatDate(item.updatedAt || item.date)}
+                  Выход: {item.output || '—'}<br />
+                  Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
                 </div>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:12 }}>
                   <button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button>
                   <button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button>
-                  <button onClick={() => onDownload(item)} style={SEL_ST}>Скачать</button>
+                  <button onClick={() => onDownload(item)} style={SEL_ST}>Скачать JSON</button>
                 </div>
               </div>
             </div>
@@ -132,12 +147,8 @@ function FileInput({ label, accept, value, onChange }) {
   )
 }
 
-function TextField({ label, value, onChange, type = 'text' }) {
-  return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><input type={type} value={value || ''} onChange={e => onChange(e.target.value)} style={INPUT} /></label>
-}
-
-function TextAreaField({ label, value, onChange }) {
-  return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><textarea value={value || ''} onChange={e => onChange(e.target.value)} style={TEXTAREA} /></label>
+function TextField({ label, value, onChange }) {
+  return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><input value={value || ''} onChange={e => onChange(e.target.value)} style={INPUT} /></label>
 }
 
 export function ReferenceTtkForm({ initial, onCancel, onSave }) {
@@ -146,175 +157,131 @@ export function ReferenceTtkForm({ initial, onCancel, onSave }) {
   function update(field, value) {
     setForm(current => ({ ...current, [field]: value }))
   }
-  function updatePhoto(field, value) {
-    setForm(current => ({ ...current, photos: { ...current.photos, [field]: value } }))
-  }
-  function updateFile(field, value) {
-    setForm(current => ({ ...current, files: { ...current.files, [field]: value } }))
-  }
-  function updateSemi(index, field, value) {
-    setForm(current => ({ ...current, semifinished: current.semifinished.map((row, i) => i === index ? { ...row, [field]: value } : row) }))
-  }
-  function updateIngredient(index, field, value) {
-    setForm(current => ({ ...current, ingredients: current.ingredients.map((row, i) => i === index ? { ...row, [field]: value } : row) }))
+
+  function updateRow(index, field, value) {
+    setForm(current => ({ ...current, rows: current.rows.map((row, i) => i === index ? { ...row, [field]: value } : row) }))
   }
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ display:'flex', flexDirection:'column', gap:16 }}>
       <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
-          <h1 style={{ margin:'0 0 6px', fontSize:28 }}>Создать эталонную ТТК</h1>
-          <div style={{ color:'#64748b', fontSize:14 }}>Вставьте готовые тексты после анализа исходной PDF/XLSX в ChatGPT.</div>
+          <h1 style={{ margin:'0 0 6px', fontSize:28 }}>Создать короткую эталонную ТТК</h1>
+          <div style={{ color:'#64748b', fontSize:14 }}>Одна ТТК = одна печатная страница A4: название, таблица, выход и фото.</div>
         </div>
-        <div style={{ display:'flex', gap:8 }}><button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button><button type="submit" style={PRIMARY}>Сохранить ТТК</button></div>
+        <div style={{ display:'flex', gap:8 }}><button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button><button type="submit" style={PRIMARY}>Сохранить</button></div>
       </div>
 
       <section style={SECTION}>
-        <h2 style={{ marginTop:0 }}>Основная информация</h2>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:12 }}>
+        <h2 style={{ marginTop:0 }}>Основное</h2>
+        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 180px', gap:12 }}>
           <TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} />
-          <TextField label="Код ТТК" value={form.ttkCode} onChange={v => update('ttkCode', v)} />
-          <TextField label="Ресторан-эталон" value={form.restaurant} onChange={v => update('restaurant', v)} />
-          <TextField label="Категория" value={form.category} onChange={v => update('category', v)} />
-          <TextField label="Цех" value={form.station} onChange={v => update('station', v)} />
           <TextField label="Выход" value={form.output} onChange={v => update('output', v)} />
-          <TextField label="Дата" type="date" value={form.date || today()} onChange={v => update('date', v)} />
-          <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>Статус</span><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="in_progress">В работе</option><option value="approved">Эталон утверждён</option></select></label>
+          <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>Статус</span><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="approved">Готова к печати</option></select></label>
         </div>
       </section>
 
       <section style={SECTION}>
-        <h2 style={{ marginTop:0 }}>Фото</h2>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}>
-          <FileInput label="Главное фото блюда" accept="image/*" value={form.photos.main} onChange={v => updatePhoto('main', v)} />
-          <FileInput label="Фото подачи" accept="image/*" value={form.photos.plating} onChange={v => updatePhoto('plating', v)} />
-          <FileInput label="Фото сверху" accept="image/*" value={form.photos.top} onChange={v => updatePhoto('top', v)} />
-          <FileInput label="Фото полуфабрикатов" accept="image/*" value={form.photos.semifinished} onChange={v => updatePhoto('semifinished', v)} />
+        <h2 style={{ marginTop:0 }}>Фото блюда</h2>
+        <div style={{ display:'grid', gridTemplateColumns:'minmax(240px,360px) 1fr', gap:16, alignItems:'center' }}>
+          <Photo file={form.photo} label="Большое фото подачи блюда" />
+          <FileInput label="Загрузить фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} />
         </div>
       </section>
 
-      <section style={SECTION}><TextAreaField label="Краткое описание блюда" value={form.description} onChange={v => update('description', v)} /></section>
-      <section style={SECTION}><TextAreaField label="Пошаговая технология приготовления" value={form.cookingMethod} onChange={v => update('cookingMethod', v)} /></section>
-      <section style={SECTION}><TextAreaField label="Оформление и подача" value={form.plating} onChange={v => update('plating', v)} /></section>
-      <section style={SECTION}><TextAreaField label="Контроль качества" value={form.qualityControl} onChange={v => update('qualityControl', v)} /></section>
-      <section style={SECTION}><TextAreaField label="Типичные ошибки" value={form.typicalMistakes} onChange={v => update('typicalMistakes', v)} /></section>
-
       <section style={SECTION}>
-        <h2 style={{ marginTop:0 }}>Полуфабрикаты</h2>
-        {(form.semifinished || []).map((row, index) => (
-          <div key={index} style={{ display:'grid', gridTemplateColumns:'1fr 140px 1fr auto', gap:8, marginBottom:8 }}>
-            <input placeholder="Название" value={row.name} onChange={e => updateSemi(index, 'name', e.target.value)} style={INPUT} />
-            <input placeholder="Количество" value={row.quantity} onChange={e => updateSemi(index, 'quantity', e.target.value)} style={INPUT} />
-            <input placeholder="Комментарий" value={row.comment} onChange={e => updateSemi(index, 'comment', e.target.value)} style={INPUT} />
-            <button type="button" onClick={() => update('semifinished', form.semifinished.filter((_, i) => i !== index))} style={SEL_ST}>Удалить</button>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:12 }}>
+          <div>
+            <h2 style={{ margin:'0 0 4px' }}>Строки ТТК</h2>
+            <div style={{ color:'#64748b', fontSize:13 }}>Заполните компактную таблицу для повара: количество, элемент, состав п/ф и короткое действие.</div>
           </div>
-        ))}
-        <button type="button" onClick={() => update('semifinished', [...(form.semifinished || []), { name:'', quantity:'', comment:'' }])} style={SEL_ST}>+ Добавить полуфабрикат</button>
-      </section>
+          <button type="button" onClick={() => update('rows', [...(form.rows || []), { ...EMPTY_ROW }])} style={PRIMARY}>Добавить строку</button>
+        </div>
 
-      <section style={SECTION}>
-        <h2 style={{ marginTop:0 }}>Состав / ингредиенты</h2>
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-            <thead><tr>{['№','Наименование','Ед. изм.','Брутто','Нетто','Вес готового продукта','Вес нетто на 1 порцию',''].map(h => <th key={h} style={{ textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead>
-            <tbody>{(form.ingredients || []).map((row, index) => <tr key={index}>{[
-              index + 1,
-              <input value={row.name} onChange={e => updateIngredient(index, 'name', e.target.value)} style={INPUT} />,
-              <input value={row.unit} onChange={e => updateIngredient(index, 'unit', e.target.value)} style={INPUT} />,
-              <input value={row.brutto} onChange={e => updateIngredient(index, 'brutto', e.target.value)} style={INPUT} />,
-              <input value={row.netto} onChange={e => updateIngredient(index, 'netto', e.target.value)} style={INPUT} />,
-              <input value={row.readyWeight} onChange={e => updateIngredient(index, 'readyWeight', e.target.value)} style={INPUT} />,
-              <input value={row.portionNetto} onChange={e => updateIngredient(index, 'portionNetto', e.target.value)} style={INPUT} />,
-              <button type="button" onClick={() => update('ingredients', form.ingredients.filter((_, i) => i !== index))} style={SEL_ST}>×</button>,
-            ].map((cell, i) => <td key={i} style={{ padding:6, border:'1px solid #e5e7eb' }}>{cell}</td>)}</tr>)}</tbody>
+            <thead><tr>{['Кол-во','Наименование','П/ф состав','Описание',''].map(h => <th key={h} style={{ textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead>
+            <tbody>{(form.rows || []).map((row, index) => <tr key={index}>
+              <td style={TD}><input placeholder="100 г" value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td>
+              <td style={TD}><input placeholder="Брауни п/ф" value={row.name} onChange={e => updateRow(index, 'name', e.target.value)} style={INPUT} /></td>
+              <td style={TD}><textarea placeholder="яйцо, сахар, шоколад..." value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA_IN_TABLE} /></td>
+              <td style={TD}><textarea placeholder="Замешать, выпекать..." value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA_IN_TABLE} /></td>
+              <td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>×</button></td>
+            </tr>)}</tbody>
           </table>
-        </div>
-        <button type="button" onClick={() => update('ingredients', [...(form.ingredients || []), { name:'', unit:'', brutto:'', netto:'', readyWeight:'', portionNetto:'' }])} style={{ ...SEL_ST, marginTop:10 }}>+ Добавить ингредиент</button>
-      </section>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop:0 }}>Файлы</h2>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:12 }}>
-          <FileInput label="PDF исходной ТТК" accept="application/pdf,.pdf" value={form.files.pdf} onChange={v => updateFile('pdf', v)} />
-          <FileInput label="XLSX исходной ТТК" accept=".xlsx,.xls" value={form.files.xlsx} onChange={v => updateFile('xlsx', v)} />
         </div>
       </section>
     </form>
   )
 }
 
+const TD = { padding:6, border:'1px solid #e5e7eb', verticalAlign:'top' }
+const AREA_IN_TABLE = { ...INPUT, minHeight:68, resize:'vertical', fontFamily:'inherit', lineHeight:1.35 }
+
 export function ReferenceTtkView({ ttk, onBack, onEdit, onDuplicate, onDelete }) {
-  const html = useMemo(() => makeHtml(ttk), [ttk])
+  const html = useMemo(() => makePrintableHtml(ttk), [ttk])
   if (!ttk) return null
-  function downloadJson() { downloadBlob(`${ttk.title || 'ttk'}.json`, JSON.stringify(ttk, null, 2), 'application/json') }
-  function downloadHtml() { downloadBlob(`${ttk.title || 'ttk'}.html`, html, 'text/html') }
-  function printPdf() {
+
+  function downloadJson() {
+    downloadBlob(`${ttk.title || 'short-reference-ttk'}.json`, JSON.stringify(ttk, null, 2), 'application/json')
+  }
+
+  function printTtk() {
     const win = window.open('', '_blank')
     win.document.write(html)
     win.document.close()
     win.focus()
     win.print()
   }
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-      <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12, alignItems:'flex-start' }}>
+      <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}>
         <div>
           <button onClick={onBack} style={{ ...SEL_ST, marginBottom:12 }}>← Эталонные ТТК</button>
           <div><TtkStatus status={ttk.status} /></div>
-          <h1 style={{ margin:'10px 0 6px', fontSize:34, color:'#0f172a' }}>{ttk.title || 'Без названия'}</h1>
-          <div style={{ color:'#64748b' }}>Код {ttk.ttkCode || '—'} · {ttk.restaurant || '—'} · обновлено {formatDate(ttk.updatedAt || ttk.date)}</div>
+          <h1 style={{ margin:'10px 0 6px', fontSize:28, color:'#0f172a' }}>{ttk.title || 'Без названия'}</h1>
+          <div style={{ color:'#64748b' }}>Выход: {ttk.output || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}</div>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
           <button onClick={onEdit} style={PRIMARY}>Редактировать</button>
-          <button onClick={downloadHtml} style={SEL_ST}>Скачать ТТК (HTML)</button>
-          <button onClick={printPdf} style={SEL_ST}>Печать / сохранить PDF</button>
+          <button onClick={printTtk} style={SEL_ST}>Скачать / Печать</button>
           <button onClick={downloadJson} style={SEL_ST}>Скачать JSON</button>
           <button onClick={onDuplicate} style={SEL_ST}>Дублировать</button>
           <button onClick={onDelete} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button>
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'minmax(260px,380px) 1fr', gap:16 }}>
-        <div style={SECTION}><Photo file={ttk.photos?.main} label="Главное фото блюда" /></div>
-        <section style={SECTION}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))', gap:10 }}>
-            <Metric label="Категория" value={ttk.category || '—'} />
-            <Metric label="Цех" value={ttk.station || '—'} />
-            <Metric label="Выход" value={ttk.output || '—'} />
-            <Metric label="Дата" value={ttk.date || '—'} />
-          </div>
-          <Block title="Краткое описание блюда" text={ttk.description} />
-        </section>
+      <div style={{ display:'flex', justifyContent:'center', overflow:'auto', padding:'16px 0 32px' }}>
+        <PrintablePage ttk={ttk} />
       </div>
-
-      <section style={SECTION}><h2>Фото</h2><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12 }}><Photo file={ttk.photos?.plating} label="Фото подачи" /><Photo file={ttk.photos?.top} label="Фото сверху" /><Photo file={ttk.photos?.semifinished} label="Фото полуфабрикатов" /></div></section>
-      <section style={SECTION}><h2>Состав</h2><IngredientsView rows={ttk.ingredients} /></section>
-      <section style={SECTION}><h2>Полуфабрикаты</h2><SemifinishedView rows={ttk.semifinished} /></section>
-      <section style={SECTION}><Block title="Способ приготовления" text={ttk.cookingMethod} /></section>
-      <section style={SECTION}><Block title="Оформление и подача" text={ttk.plating} /></section>
-      <section style={SECTION}><Block title="Контроль качества" text={ttk.qualityControl} /></section>
-      <section style={SECTION}><Block title="Типичные ошибки" text={ttk.typicalMistakes} /></section>
-      <section style={SECTION}><h2>Прикреплённые файлы</h2><div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>{ttk.files?.pdf ? <a href={ttk.files.pdf.dataUrl} download={ttk.files.pdf.name} style={{ color:'#2563eb' }}>📄 {ttk.files.pdf.name}</a> : <span style={{ color:'#94a3b8' }}>PDF не загружен</span>}{ttk.files?.xlsx ? <a href={ttk.files.xlsx.dataUrl} download={ttk.files.xlsx.name} style={{ color:'#2563eb' }}>📊 {ttk.files.xlsx.name}</a> : <span style={{ color:'#94a3b8' }}>XLSX не загружен</span>}</div></section>
     </div>
   )
 }
 
-function Metric({ label, value }) {
-  return <div style={{ background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:12, padding:12 }}><div style={{ color:'#64748b', fontSize:10, fontWeight:900, textTransform:'uppercase' }}>{label}</div><div style={{ fontSize:16, color:'#0f172a', fontWeight:900, marginTop:4 }}>{value}</div></div>
+function PrintablePage({ ttk }) {
+  return (
+    <article style={{ width:'210mm', minHeight:'297mm', background:'#fff', boxShadow:'0 24px 70px rgba(15,23,42,.16)', padding:'13mm 12mm 12mm', display:'flex', flexDirection:'column', gap:'8mm' }}>
+      <h1 style={{ margin:0, textAlign:'center', fontSize:23, lineHeight:1.15, textTransform:'uppercase', letterSpacing:'.02em', color:'#111827' }}>{ttk.title || 'Название блюда'}</h1>
+      <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:12, lineHeight:1.25 }}>
+        <thead><tr>{['Кол-во','Наименование','П/ф','Описание'].map((h, i) => <th key={h} style={{ ...PRINT_TH, width:['18%','25%','29%','28%'][i] }}>{h}</th>)}</tr></thead>
+        <tbody>{(ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map((row, index) => <tr key={index}>
+          <td style={{ ...PRINT_TD, textAlign:'center', fontWeight:800 }}>{row.qty}</td>
+          <td style={{ ...PRINT_TD, fontWeight:800 }}>{row.name}</td>
+          <td style={PRINT_TD}>{row.semifinished}</td>
+          <td style={PRINT_TD}>{row.description}</td>
+        </tr>)}</tbody>
+      </table>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12 }}>
+        <div style={{ fontSize:17, fontWeight:900, border:'1.5px solid #111827', padding:'8px 10px', minWidth:190 }}>Выход: {ttk.output || '—'}</div>
+        <div style={{ fontSize:11, color:'#6b7280' }}>Обновлено: {formatDate(ttk.updatedAt)}</div>
+      </div>
+      <div style={{ marginTop:'auto' }}>
+        {ttk.photo?.dataUrl ? <img src={ttk.photo.dataUrl} alt={ttk.title} style={{ width:'100%', height:'112mm', objectFit:'cover', border:'1.5px solid #111827', display:'block' }} /> : <div style={{ height:'112mm', border:'1.5px dashed #9ca3af', display:'flex', alignItems:'center', justifyContent:'center', color:'#6b7280', background:'#f9fafb', fontSize:18 }}>Фото блюда</div>}
+      </div>
+    </article>
+  )
 }
 
-function Block({ title, text }) {
-  return <div style={{ marginTop:14 }}><h3 style={{ margin:'0 0 8px', color:'#0f172a' }}>{title}</h3><div style={{ whiteSpace:'pre-wrap', lineHeight:1.65, color:text ? '#334155' : '#94a3b8' }}>{text || 'Не заполнено'}</div></div>
-}
-
-function IngredientsView({ rows = [] }) {
-  if (!rows.length) return <div style={{ color:'#94a3b8' }}>Ингредиенты не заполнены</div>
-  return <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['№','Наименование','Ед. изм.','Брутто','Нетто','Вес готового продукта','Вес нетто на 1 порцию'].map(h => <th key={h} style={{ textAlign:'left', padding:9, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={i}><td style={TD}>{i + 1}</td><td style={TD}>{row.name}</td><td style={TD}>{row.unit}</td><td style={TD}>{row.brutto}</td><td style={TD}>{row.netto}</td><td style={TD}>{row.readyWeight}</td><td style={TD}>{row.portionNetto}</td></tr>)}</tbody></table></div>
-}
-
-const TD = { padding:9, border:'1px solid #e5e7eb' }
-
-function SemifinishedView({ rows = [] }) {
-  if (!rows.length) return <div style={{ color:'#94a3b8' }}>Полуфабрикаты не заполнены</div>
-  return <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:8 }}>{rows.map((row, i) => <div key={i} style={{ background:'#f8fafc', borderRadius:12, padding:12 }}><div style={{ fontWeight:900 }}>{row.name}</div><div style={{ color:'#64748b', fontSize:12 }}>Количество: {row.quantity || '—'}</div><div style={{ color:'#334155', fontSize:12 }}>{row.comment}</div></div>)}</div>
-}
+const PRINT_TH = { border:'1.5px solid #111827', padding:'6px 7px', verticalAlign:'top', wordBreak:'break-word', background:'#f3f4f6', textAlign:'center', fontSize:11, textTransform:'uppercase', letterSpacing:'.03em' }
+const PRINT_TD = { border:'1.5px solid #111827', padding:'6px 7px', verticalAlign:'top', wordBreak:'break-word' }

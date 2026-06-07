@@ -29,13 +29,12 @@ function Settings() {
     <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24, maxWidth:760 }}>
       <h1 style={{ margin:'0 0 8px', color:'#0f172a' }}>Настройки</h1>
       <p style={{ color:'#64748b', lineHeight:1.6 }}>
-        Данные эталонных ТТК временно хранятся в localStorage браузера. Для подготовки новой карты загрузите исходный PDF/XLSX,
-        проанализируйте его в ChatGPT отдельно и вставьте готовые тексты в форму “Создать ТТК”.
+        Данные коротких эталонных ТТК временно хранятся в localStorage браузера. Заполните название, выход, строки таблицы, добавьте фото блюда и распечатайте одну страницу A4.
       </p>
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
-        <Tag color="#6366f1" bg="#eef2ff">Простой конструктор</Tag>
+        <Tag color="#6366f1" bg="#eef2ff">Одна ТТК = одна страница</Tag>
         <Tag color="#16a34a" bg="#f0fdf4">Без CRM и заданий</Tag>
-        <Tag color="#d97706" bg="#fffbeb">Скачивание HTML/JSON/PDF через печать</Tag>
+        <Tag color="#d97706" bg="#fffbeb">Печать / PDF через браузер</Tag>
       </div>
     </div>
   )
@@ -90,7 +89,7 @@ export default function App() {
       <aside style={{ width:236, background:'#0f172a', color:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
         <div style={{ padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
           <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>Академия Клёво</div>
-          <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Эталонная технологическая карта</div>
+          <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Короткая печатная ТТК A4</div>
         </div>
         <nav style={{ padding:10, flex:1 }}>
           {NAV_ITEMS.map(item => {
@@ -115,7 +114,7 @@ export default function App() {
       <main style={{ flex:1, minWidth:0 }}>
         <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{section === 'view' ? selected?.title || 'Карточка ТТК' : pageTitle}</div>
-          <Tag color="#6366f1" bg="#eef2ff">Создал → заполнил → сохранил → скачал</Tag>
+          <Tag color="#6366f1" bg="#eef2ff">Создал → заполнил строки → добавил фото → распечатал</Tag>
         </header>
         <div style={{ padding:28 }}>
           {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={downloadJson} />}

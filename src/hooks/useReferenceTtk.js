@@ -1,15 +1,36 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const STORAGE_KEY = 'academy_reference_ttk_v1'
+const STORAGE_KEY = 'academy_printable_reference_ttk_v1'
+const LEGACY_STORAGE_KEY = 'academy_reference_ttk_v1'
 
-const initialItems = []
+const EMPTY_ROW = { qty: '', name: '', semifinished: '', description: '' }
+
+function isBrowserStorageAvailable() {
+  return typeof localStorage !== 'undefined'
+}
+
+function parseItems(raw) {
+  try {
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.map(normalizeReferenceTtk) : []
+  } catch {
+    return []
+  }
+}
 
 function readItems() {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  return raw ? JSON.parse(raw) : initialItems
+  if (!isBrowserStorageAvailable()) return []
+  const current = localStorage.getItem(STORAGE_KEY)
+  if (current) return parseItems(current)
+
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+  if (legacy) return parseItems(legacy)
+
+  return []
 }
 
 function writeItems(items) {
+  if (!isBrowserStorageAvailable()) return
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
 }
 
@@ -18,36 +39,61 @@ export function makeReferenceTtkId() {
 }
 
 export function createEmptyReferenceTtk() {
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date().toISOString()
   return {
     id: makeReferenceTtkId(),
     title: '',
-    ttkCode: '',
-    restaurant: 'Петровка',
-    category: '',
-    station: '',
     output: '',
-    date: today,
+    rows: [{ ...EMPTY_ROW }],
+    photo: null,
     status: 'draft',
-    photos: {
-      main: null,
-      plating: null,
-      top: null,
-      semifinished: null,
-    },
-    description: '',
-    cookingMethod: '',
-    plating: '',
-    qualityControl: '',
-    typicalMistakes: '',
-    semifinished: [{ name: '', quantity: '', comment: '' }],
-    ingredients: [{ name: '', unit: '', brutto: '', netto: '', readyWeight: '', portionNetto: '' }],
-    files: {
-      pdf: null,
-      xlsx: null,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function normalizeRows(item) {
+  if (Array.isArray(item?.rows)) {
+    return item.rows.map(row => ({
+      qty: row.qty || '',
+      name: row.name || '',
+      semifinished: row.semifinished || '',
+      description: row.description || '',
+    }))
+  }
+
+  if (Array.isArray(item?.ingredients) && item.ingredients.length > 0) {
+    return item.ingredients.map(row => ({
+      qty: row.portionNetto || row.netto || row.brutto || '',
+      name: row.name || '',
+      semifinished: row.unit || '',
+      description: row.comment || '',
+    }))
+  }
+
+  if (Array.isArray(item?.semifinished) && item.semifinished.length > 0) {
+    return item.semifinished.map(row => ({
+      qty: row.quantity || '',
+      name: row.name || '',
+      semifinished: row.comment || '',
+      description: '',
+    }))
+  }
+
+  return [{ ...EMPTY_ROW }]
+}
+
+export function normalizeReferenceTtk(item = {}) {
+  const now = new Date().toISOString()
+  return {
+    id: item.id || makeReferenceTtkId(),
+    title: item.title || item.name || '',
+    output: item.output || '',
+    rows: normalizeRows(item),
+    photo: item.photo || item.photos?.main || null,
+    status: item.status || 'draft',
+    createdAt: item.createdAt || now,
+    updatedAt: item.updatedAt || now,
   }
 }
 
@@ -68,18 +114,22 @@ export function useReferenceTtkStore() {
 
   const saveTtk = useCallback(ttk => {
     const now = new Date().toISOString()
+    const normalized = normalizeReferenceTtk(ttk)
     const clean = {
-      ...ttk,
+      ...normalized,
       updatedAt: now,
-      semifinished: (ttk.semifinished || []).filter(row => row.name || row.quantity || row.comment),
-      ingredients: (ttk.ingredients || []).filter(row => row.name || row.unit || row.brutto || row.netto || row.readyWeight || row.portionNetto),
+      rows: normalized.rows.filter(row => row.qty || row.name || row.semifinished || row.description),
     }
+
+    if (clean.rows.length === 0) clean.rows = [{ ...EMPTY_ROW }]
+
     persist(current => {
       const exists = current.some(item => item.id === clean.id)
       return exists
         ? current.map(item => item.id === clean.id ? clean : item)
         : [{ ...clean, createdAt: clean.createdAt || now }, ...current]
     })
+
     return clean
   }, [persist])
 
@@ -90,15 +140,17 @@ export function useReferenceTtkStore() {
   const duplicateTtk = useCallback(id => {
     const source = readItems().find(item => item.id === id)
     if (!source) return null
+
     const now = new Date().toISOString()
     const copy = {
       ...source,
       id: makeReferenceTtkId(),
-      title: `${source.title} — копия`,
+      title: `${source.title || 'ТТК'} — копия`,
       status: 'draft',
       createdAt: now,
       updatedAt: now,
     }
+
     persist(current => [copy, ...current])
     return copy
   }, [persist])
