@@ -33,6 +33,33 @@ function downloadJson(item) {
   URL.revokeObjectURL(url)
 }
 
+function toTtkOption(item, source) {
+  return {
+    ...item,
+    source,
+    title: item.title || item.name || item['Наименование'] || 'Без названия',
+    name: item.name || item.title || item['Наименование'] || 'Без названия',
+    unit: item.unit || item['Ед. изм.'] || item['Ед изм'] || 'г',
+    composition: item.composition || item['Состав'] || '',
+    cookingMethod: item.cookingMethod || item['Способ приготовления'] || item['Технология'] || '',
+  }
+}
+
+function makeCombinedNomenclature(nomenclature, products, semifinished) {
+  const map = new Map()
+
+  ;[
+    ...nomenclature.map(item => toTtkOption(item, 'nomenclature')),
+    ...products.map(item => toTtkOption(item, 'product')),
+    ...semifinished.map(item => toTtkOption(item, 'semifinished')),
+  ].forEach(item => {
+    const key = `${item.source}_${String(item.name || item.title).trim().toLowerCase()}`
+    if (!map.has(key)) map.set(key, item)
+  })
+
+  return Array.from(map.values())
+}
+
 function Settings() {
   return (
     <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24, maxWidth:760 }}>
@@ -76,6 +103,11 @@ export default function App() {
     deleteItem: deleteSemifinished,
     importItems: importSemifinished,
   } = useSemifinishedStore()
+
+  const combinedNomenclature = useMemo(
+    () => makeCombinedNomenclature(nomenclature, products, semifinished),
+    [nomenclature, products, semifinished],
+  )
 
   const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
   const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || 'Эталонные ТТК'
@@ -162,6 +194,7 @@ export default function App() {
           {nomenclature.length} позиций номенклатуры<br />
           {products.length} товаров<br />
           {semifinished.length} полуфабрикатов<br />
+          {combinedNomenclature.length} доступно для ТТК<br />
           localStorage · без backend
         </div>
       </aside>
@@ -188,7 +221,7 @@ export default function App() {
           {section === 'create' && (
             <ReferenceTtkForm
               initial={editing}
-              nomenclature={nomenclature}
+              nomenclature={combinedNomenclature}
               onSaveNomenclatureItem={saveNomenclatureItem}
               onCancel={() => setSection('list')}
               onSave={handleSave}
