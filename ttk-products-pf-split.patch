@@ -1,0 +1,1216 @@
+--- a/src/hooks/useNomenclature.js
++++ b/src/hooks/useNomenclature.js
+@@ -1,163 +1,245 @@
+ import { useCallback, useEffect, useState } from 'react'
+ 
+-export const NOMENCLATURE_STORAGE_KEY = 'klevo_nomenclature'
+-
+-export const NOMENCLATURE_TYPES = [
+-  'product',
+-  'semifinished',
+-  'sauce',
+-  'prep',
+-  'decor',
+-  'dish',
+-]
+-
+-export const NOMENCLATURE_TYPE_LABELS = {
+-  product: 'РўРѕРІР°СЂ',
+-  semifinished: 'РџРѕР»СѓС„Р°Р±СЂРёРєР°С‚',
+-  sauce: 'РЎРѕСѓСЃ',
+-  prep: 'Р—Р°РіРѕС‚РѕРІРєР°',
+-  decor: 'Р”РµРєРѕСЂ',
+-  dish: 'Р‘Р»СЋРґРѕ',
+-}
+-
+-export const NOMENCLATURE_FILTERS = [
+-  { value: 'all', label: 'Р’СЃРµ' },
+-  { value: 'product', label: 'РўРѕРІР°СЂС‹' },
+-  { value: 'semifinished', label: 'РџРѕР»СѓС„Р°Р±СЂРёРєР°С‚С‹' },
+-  { value: 'sauce', label: 'РЎРѕСѓСЃС‹' },
+-  { value: 'prep', label: 'Р—Р°РіРѕС‚РѕРІРєРё' },
+-]
+-
+-const TYPE_ALIASES = {
+-  product: 'product',
+-  С‚РѕРІР°СЂ: 'product',
+-  С‚РѕРІР°СЂС‹: 'product',
+-  semifinished: 'semifinished',
+-  'РїРѕР»СѓС„Р°Р±СЂРёРєР°С‚': 'semifinished',
+-  'РїРѕР»СѓС„Р°Р±СЂРёРєР°С‚С‹': 'semifinished',
+-  sauce: 'sauce',
+-  СЃРѕСѓСЃ: 'sauce',
+-  СЃРѕСѓСЃС‹: 'sauce',
+-  prep: 'prep',
+-  Р·Р°РіРѕС‚РѕРІРєР°: 'prep',
+-  Р·Р°РіРѕС‚РѕРІРєРё: 'prep',
+-  decor: 'decor',
+-  РґРµРєРѕСЂ: 'decor',
+-  dish: 'dish',
+-  Р±Р»СЋРґРѕ: 'dish',
+-  Р±Р»СЋРґР°: 'dish',
+-}
+-
+-function normalizeNomenclatureType(type) {
+-  const key = String(type || '').trim().toLowerCase()
+-  return TYPE_ALIASES[key] || 'product'
+-}
++export const PRODUCTS_STORAGE_KEY = 'klevo_products'
++export const SEMIFINISHED_STORAGE_KEY = 'klevo_semifinished'
++export const LEGACY_NOMENCLATURE_STORAGE_KEY = 'klevo_nomenclature'
+ 
+ function nowIso() {
+   return new Date().toISOString()
+ }
+ 
+-export function makeNomenclatureId() {
+-  return `nom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+-}
+-
+-export function createEmptyNomenclatureItem() {
+-  const now = nowIso()
+-  return {
+-    id: makeNomenclatureId(),
++function makeId(prefix) {
++  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
++}
++
++function clean(value) {
++  return String(value || '').trim()
++}
++
++function pick(item, keys, fallback = '') {
++  for (const key of keys) {
++    if (item?.[key] !== undefined && item?.[key] !== null && String(item[key]).trim() !== '') return item[key]
++  }
++  return fallback
++}
++
++function splitCategoryPath(value, fallback = '') {
++  const raw = clean(value || fallback)
++  if (!raw) return { category: '', categoryPath: '' }
++  const parts = raw.split(/[/>\\|]+/).map(x => x.trim()).filter(Boolean)
++  return {
++    category: parts[0] || clean(fallback),
++    categoryPath: parts.length ? parts.join(' / ') : clean(fallback),
++  }
++}
++
++export function createEmptyProduct() {
++  const now = nowIso()
++  return {
++    id: makeId('prod'),
+     name: '',
+-    type: 'product',
++    unit: 'г',
+     category: '',
+     categoryPath: '',
+-    unit: 'Рі',
+-    description: '',
++    comment: '',
++    createdAt: now,
++    updatedAt: now,
++  }
++}
++
++export function createEmptySemifinished() {
++  const now = nowIso()
++  return {
++    id: makeId('pf'),
++    name: '',
++    unit: 'г',
++    category: '',
++    categoryPath: '',
++    output: '',
+     composition: '',
+     cookingMethod: '',
+-    output: '',
++    description: '',
++    status: 'draft',
++    photo: null,
++    files: [],
+     createdAt: now,
+     updatedAt: now,
+   }
+ }
+ 
+-export function normalizeNomenclatureItem(item = {}) {
+-  const now = nowIso()
+-  return {
+-    id: item.id || makeNomenclatureId(),
+-    name: item.name || '',
+-    type: normalizeNomenclatureType(item.type),
+-    category: item.category || '',
+-    categoryPath: item.categoryPath || '',
+-    unit: item.unit || 'Рі',
+-    description: item.description || '',
+-    composition: item.composition || '',
+-    cookingMethod: item.cookingMethod || '',
+-    output: item.output || '',
++export function normalizeProduct(item = {}) {
++  const now = nowIso()
++  const categoryInfo = splitCategoryPath(
++    pick(item, ['categoryPath', 'groupPath', 'path', 'Группа', 'Путь категории']),
++    pick(item, ['category', 'group', 'Категория'])
++  )
++
++  return {
++    id: item.id || makeId('prod'),
++    name: clean(pick(item, ['name', 'title', 'Наименование', 'Номенклатура', 'Товар', 'itemName'])),
++    unit: clean(pick(item, ['unit', 'Ед. изм.', 'Единица', 'uom'], 'г')),
++    category: clean(item.category || categoryInfo.category),
++    categoryPath: clean(item.categoryPath || categoryInfo.categoryPath),
++    comment: clean(pick(item, ['comment', 'comments', 'Комментарий', 'description'])),
+     createdAt: item.createdAt || now,
+     updatedAt: item.updatedAt || now,
+   }
+ }
+ 
+-function readItems() {
++export function normalizeSemifinished(item = {}) {
++  const now = nowIso()
++  const categoryInfo = splitCategoryPath(
++    pick(item, ['categoryPath', 'groupPath', 'path', 'Группа', 'Путь категории']),
++    pick(item, ['category', 'group', 'Категория'])
++  )
++
++  return {
++    id: item.id || makeId('pf'),
++    name: clean(pick(item, ['name', 'title', 'Наименование', 'Номенклатура', 'Полуфабрикат', 'itemName'])),
++    unit: clean(pick(item, ['unit', 'Ед. изм.', 'Единица', 'uom'], 'г')),
++    category: clean(item.category || categoryInfo.category),
++    categoryPath: clean(item.categoryPath || categoryInfo.categoryPath),
++    output: clean(pick(item, ['output', 'yield', 'Выход'])),
++    composition: clean(pick(item, ['composition', 'Состав', 'pf', 'semifinished'])),
++    cookingMethod: clean(pick(item, ['cookingMethod', 'method', 'Технология', 'Способ приготовления'])),
++    description: clean(pick(item, ['description', 'Описание', 'comment', 'Комментарий'])),
++    status: clean(pick(item, ['status', 'Статус'], 'draft')),
++    photo: item.photo || null,
++    files: Array.isArray(item.files) ? item.files : [],
++    createdAt: item.createdAt || now,
++    updatedAt: item.updatedAt || now,
++  }
++}
++
++function readArray(key) {
+   try {
+-    const raw = localStorage.getItem(NOMENCLATURE_STORAGE_KEY)
++    const raw = localStorage.getItem(key)
+     const parsed = raw ? JSON.parse(raw) : []
+-    return Array.isArray(parsed) ? parsed.map(normalizeNomenclatureItem) : []
++    return Array.isArray(parsed) ? parsed : []
+   } catch {
+     return []
+   }
+ }
+ 
+-function writeItems(items) {
+-  localStorage.setItem(NOMENCLATURE_STORAGE_KEY, JSON.stringify(items))
+-}
+-
+-export function useNomenclatureStore() {
++function writeArray(key, items) {
++  localStorage.setItem(key, JSON.stringify(items))
++}
++
++function mergeByName(current, incoming) {
++  const byName = new Map(current.map(item => [clean(item.name).toLowerCase(), item]))
++  incoming.forEach(item => {
++    const key = clean(item.name).toLowerCase()
++    if (!key) return
++    const old = byName.get(key)
++    byName.set(key, old ? { ...old, ...item, id: old.id, createdAt: old.createdAt, updatedAt: nowIso() } : item)
++  })
++  return Array.from(byName.values())
++}
++
++function looksLikeSemifinished(item) {
++  const type = clean(item.type || item.Тип).toLowerCase()
++  return ['semifinished', 'pf', 'пф', 'полуфабрикат', 'полуфабрикаты', 'sauce', 'соус', 'prep', 'заготовка'].includes(type)
++}
++
++function migrateLegacyIfNeeded() {
++  const productsExist = localStorage.getItem(PRODUCTS_STORAGE_KEY)
++  const semifinishedExist = localStorage.getItem(SEMIFINISHED_STORAGE_KEY)
++  const legacy = readArray(LEGACY_NOMENCLATURE_STORAGE_KEY)
++
++  if (!legacy.length || (productsExist && semifinishedExist)) return
++
++  const products = []
++  const semifinished = []
++
++  legacy.forEach(item => {
++    if (looksLikeSemifinished(item)) semifinished.push(normalizeSemifinished(item))
++    else products.push(normalizeProduct(item))
++  })
++
++  if (!productsExist) writeArray(PRODUCTS_STORAGE_KEY, products)
++  if (!semifinishedExist) writeArray(SEMIFINISHED_STORAGE_KEY, semifinished)
++  localStorage.setItem(`${LEGACY_NOMENCLATURE_STORAGE_KEY}_migrated`, nowIso())
++}
++
++function useLocalCollection({ key, normalize, createEmpty }) {
+   const [items, setItems] = useState([])
+ 
+   useEffect(() => {
+-    setItems(readItems())
+-  }, [])
++    migrateLegacyIfNeeded()
++    setItems(readArray(key).map(normalize).filter(item => item.name))
++  }, [key, normalize])
+ 
+   const persist = useCallback(updater => {
+     setItems(current => {
+       const next = typeof updater === 'function' ? updater(current) : updater
+-      writeItems(next)
++      writeArray(key, next)
+       return next
+     })
+-  }, [])
++  }, [key])
+ 
+   const saveItem = useCallback(item => {
+     const now = nowIso()
+-    const clean = { ...normalizeNomenclatureItem(item), updatedAt: now }
++    const cleanItem = { ...normalize(item), updatedAt: now }
++    if (!cleanItem.id) cleanItem.id = createEmpty().id
+ 
+     persist(current => {
+-      const exists = current.some(row => row.id === clean.id)
++      const exists = current.some(row => row.id === cleanItem.id)
+       return exists
+-        ? current.map(row => row.id === clean.id ? clean : row)
+-        : [{ ...clean, createdAt: clean.createdAt || now }, ...current]
++        ? current.map(row => row.id === cleanItem.id ? cleanItem : row)
++        : [{ ...cleanItem, createdAt: cleanItem.createdAt || now }, ...current]
+     })
+ 
+-    return clean
+-  }, [persist])
++    return cleanItem
++  }, [persist, normalize, createEmpty])
+ 
+   const deleteItem = useCallback(id => {
+     persist(current => current.filter(item => item.id !== id))
+   }, [persist])
+ 
+   const importItems = useCallback(imported => {
+-    const now = nowIso()
+-    const normalized = imported.map(item => normalizeNomenclatureItem({ ...item, id: item.id || makeNomenclatureId(), createdAt: item.createdAt || now, updatedAt: now }))
+-    persist(current => {
+-      const byName = new Map(current.map(item => [item.name.trim().toLowerCase(), item]))
+-      normalized.forEach(item => {
+-        const key = item.name.trim().toLowerCase()
+-        if (!key) return
+-        byName.set(key, byName.has(key) ? { ...byName.get(key), ...item, id: byName.get(key).id, updatedAt: now } : item)
+-      })
+-      return Array.from(byName.values())
+-    })
++    const normalized = imported.map(normalize).filter(item => item.name)
++    persist(current => mergeByName(current, normalized))
+     return normalized.length
+-  }, [persist])
+-
+-  return { items, saveItem, deleteItem, importItems }
+-}
++  }, [persist, normalize])
++
++  const replaceAll = useCallback(nextItems => {
++    const normalized = nextItems.map(normalize).filter(item => item.name)
++    persist(normalized)
++    return normalized.length
++  }, [persist, normalize])
++
++  return { items, saveItem, deleteItem, importItems, replaceAll }
++}
++
++export function useProductsStore() {
++  return useLocalCollection({ key: PRODUCTS_STORAGE_KEY, normalize: normalizeProduct, createEmpty: createEmptyProduct })
++}
++
++export function useSemifinishedStore() {
++  return useLocalCollection({ key: SEMIFINISHED_STORAGE_KEY, normalize: normalizeSemifinished, createEmpty: createEmptySemifinished })
++}
++
++export function useNomenclatureStore() {
++  const products = useProductsStore()
++  const semifinished = useSemifinishedStore()
++  return {
++    items: [
++      ...products.items.map(item => ({ ...item, type: 'product' })),
++      ...semifinished.items.map(item => ({ ...item, type: 'semifinished' })),
++    ],
++    products,
++    semifinished,
++  }
++}
++
++export const PRODUCT_LABELS = {
++  title: 'Товары',
++  singular: 'товар',
++  storageKey: PRODUCTS_STORAGE_KEY,
++}
++
++export const SEMIFINISHED_LABELS = {
++  title: 'Полуфабрикаты',
++  singular: 'полуфабрикат',
++  storageKey: SEMIFINISHED_STORAGE_KEY,
++}
+--- a/src/pages/Nomenclature.jsx
++++ b/src/pages/Nomenclature.jsx
+@@ -1,6 +1,6 @@
+ import { useMemo, useState } from 'react'
+-import { NOMENCLATURE_FILTERS, NOMENCLATURE_TYPE_LABELS, NOMENCLATURE_TYPES, createEmptyNomenclatureItem } from '../hooks/useNomenclature.js'
+ import { Tag, SEL_ST } from '../components/ui.jsx'
++import { createEmptyProduct, createEmptySemifinished } from '../hooks/useNomenclature.js'
+ 
+ const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
+ const FIELD = { display:'flex', flexDirection:'column', gap:6 }
+@@ -17,30 +17,22 @@
+   for (let i = 0; i < text.length; i += 1) {
+     const char = text[i]
+     const next = text[i + 1]
+-
+-    if (char === '"' && quoted && next === '"') {
+-      current += '"'
+-      i += 1
+-    } else if (char === '"') {
+-      quoted = !quoted
+-    } else if (char === ',' && !quoted) {
+-      row.push(current.trim())
+-      current = ''
+-    } else if ((char === '\n' || char === '\r') && !quoted) {
++    if (char === '"' && quoted && next === '"') { current += '"'; i += 1 }
++    else if (char === '"') quoted = !quoted
++    else if ((char === ',' || char === ';') && !quoted) { row.push(current.trim()); current = '' }
++    else if ((char === '\n' || char === '\r') && !quoted) {
+       if (char === '\r' && next === '\n') i += 1
+       row.push(current.trim())
+       if (row.some(Boolean)) rows.push(row)
+       row = []
+       current = ''
+-    } else {
+-      current += char
+-    }
++    } else current += char
+   }
+ 
+   row.push(current.trim())
+   if (row.some(Boolean)) rows.push(row)
+-
+   if (rows.length < 2) return []
++
+   const headers = rows[0].map(header => header.trim())
+   return rows.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, values[index] || ''])))
+ }
+@@ -58,10 +50,22 @@
+   const parsed = JSON.parse(text)
+   if (Array.isArray(parsed)) return parsed
+   if (Array.isArray(parsed.items)) return parsed.items
++  if (Array.isArray(parsed.products)) return parsed.products
++  if (Array.isArray(parsed.semifinished)) return parsed.semifinished
+   if (Array.isArray(parsed.nomenclature)) return parsed.nomenclature
+   return []
+ }
+ 
++function downloadJson(name, data) {
++  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' })
++  const url = URL.createObjectURL(blob)
++  const link = document.createElement('a')
++  link.href = url
++  link.download = name
++  link.click()
++  URL.revokeObjectURL(url)
++}
++
+ function Field({ label, children }) {
+   return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span>{children}</label>
+ }
+@@ -74,8 +78,18 @@
+   return <Field label={label}><textarea value={value || ''} onChange={e => onChange(e.target.value)} style={TEXTAREA} /></Field>
+ }
+ 
+-function NomenclatureForm({ initial, onSave, onCancel }) {
+-  const [form, setForm] = useState(() => initial || createEmptyNomenclatureItem())
++function buildTree(items) {
++  const root = new Map()
++  items.forEach(item => {
++    const path = (item.categoryPath || item.category || 'Без группы').split('/').map(part => part.trim()).filter(Boolean)
++    const first = path[0] || 'Без группы'
++    root.set(first, (root.get(first) || 0) + 1)
++  })
++  return Array.from(root.entries()).sort((a, b) => a[0].localeCompare(b[0], 'ru'))
++}
++
++function CatalogForm({ kind, initial, onSave, onCancel }) {
++  const [form, setForm] = useState(() => initial || (kind === 'product' ? createEmptyProduct() : createEmptySemifinished()))
+ 
+   function update(field, value) {
+     setForm(current => ({ ...current, [field]: value }))
+@@ -85,55 +99,58 @@
+     <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ ...SECTION, display:'flex', flexDirection:'column', gap:14 }}>
+       <div style={{ display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}>
+         <div>
+-          <h2 style={{ margin:'0 0 4px' }}>{initial ? 'Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ РїРѕР·РёС†РёСЋ' : 'Р”РѕР±Р°РІРёС‚СЊ РїРѕР·РёС†РёСЋ'}</h2>
+-          <div style={{ color:'#64748b', fontSize:13 }}>РџРѕР·РёС†РёРё РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ РґР»СЏ Р°РІС‚РѕР·Р°РїРѕР»РЅРµРЅРёСЏ СЃС‚СЂРѕРє СЌС‚Р°Р»РѕРЅРЅРѕР№ РўРўРљ.</div>
+-        </div>
+-        <div style={{ display:'flex', gap:8 }}><button type="button" onClick={onCancel} style={SEL_ST}>РћС‚РјРµРЅР°</button><button type="submit" style={PRIMARY}>РЎРѕС…СЂР°РЅРёС‚СЊ</button></div>
++          <h2 style={{ margin:'0 0 4px' }}>{initial ? 'Редактировать' : 'Добавить'} {kind === 'product' ? 'товар' : 'полуфабрикат'}</h2>
++          <div style={{ color:'#64748b', fontSize:13 }}>{kind === 'product' ? 'Товары используются как сырьё.' : 'Полуфабрикаты подтягивают состав и технологию в ТТК.'}</div>
++        </div>
++        <div style={{ display:'flex', gap:8 }}>
++          <button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button>
++          <button type="submit" style={PRIMARY}>Сохранить</button>
++        </div>
+       </div>
+ 
+       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))', gap:12 }}>
+-        <TextField label="РќР°Р·РІР°РЅРёРµ" value={form.name} onChange={v => update('name', v)} />
+-        <Field label="РўРёРї"><select value={form.type} onChange={e => update('type', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{NOMENCLATURE_TYPES.map(type => <option key={type} value={type}>{NOMENCLATURE_TYPE_LABELS[type]}</option>)}</select></Field>
+-        <TextField label="РљР°С‚РµРіРѕСЂРёСЏ" value={form.category} onChange={v => update('category', v)} />
+-        <TextField label="РџСѓС‚СЊ РєР°С‚РµРіРѕСЂРёРё" value={form.categoryPath} onChange={v => update('categoryPath', v)} />
+-        <TextField label="Р•Рґ. РёР·Рј." value={form.unit} onChange={v => update('unit', v)} />
+-        <TextField label="Р’С‹С…РѕРґ" value={form.output} onChange={v => update('output', v)} />
++        <TextField label={kind === 'product' ? 'Наименование товара' : 'Название полуфабриката'} value={form.name} onChange={v => update('name', v)} />
++        <TextField label="Ед. изм." value={form.unit} onChange={v => update('unit', v)} />
++        <TextField label="Категория" value={form.category} onChange={v => update('category', v)} />
++        <TextField label="Древо групп / путь категории" value={form.categoryPath} onChange={v => update('categoryPath', v)} />
++        {kind !== 'product' && <TextField label="Выход" value={form.output} onChange={v => update('output', v)} />}
++        {kind !== 'product' && <Field label="Статус"><select value={form.status || 'draft'} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="approved">Эталон</option></select></Field>}
+       </div>
+ 
+-      <TextAreaField label="РЎРѕСЃС‚Р°РІ / РџР¤" value={form.composition} onChange={v => update('composition', v)} />
+-      <TextAreaField label="РћРїРёСЃР°РЅРёРµ" value={form.description} onChange={v => update('description', v)} />
+-      <TextAreaField label="РўРµС…РЅРѕР»РѕРіРёСЏ РїСЂРёРіРѕС‚РѕРІР»РµРЅРёСЏ" value={form.cookingMethod} onChange={v => update('cookingMethod', v)} />
++      {kind === 'product' ? (
++        <TextAreaField label="Комментарий" value={form.comment} onChange={v => update('comment', v)} />
++      ) : (
++        <>
++          <TextAreaField label="Состав" value={form.composition} onChange={v => update('composition', v)} />
++          <TextAreaField label="Способ приготовления" value={form.cookingMethod} onChange={v => update('cookingMethod', v)} />
++          <TextAreaField label="Описание / комментарий" value={form.description} onChange={v => update('description', v)} />
++        </>
++      )}
+     </form>
+   )
+ }
+ 
+-export function NomenclaturePage({ items, onSave, onDelete, onImport }) {
++export function CatalogPage({ kind, items, onSave, onDelete, onImport }) {
++  const isProduct = kind === 'product'
++  const title = isProduct ? '📦 Товары' : '🥣 Полуфабрикаты'
++  const storageKey = isProduct ? 'klevo_products' : 'klevo_semifinished'
+   const [query, setQuery] = useState('')
+-  const [type, setType] = useState('all')
++  const [group, setGroup] = useState('all')
+   const [editing, setEditing] = useState(null)
+   const [showForm, setShowForm] = useState(false)
+   const [message, setMessage] = useState('')
+ 
++  const tree = useMemo(() => buildTree(items), [items])
++
+   const filtered = useMemo(() => {
+     const needle = query.trim().toLowerCase()
+     return items.filter(item => {
+-      const matchesType = type === 'all' || item.type === type
+-      const haystack = [item.name, item.type, item.category, item.categoryPath, item.unit, item.description, item.composition].join(' ').toLowerCase()
+-      return matchesType && (!needle || haystack.includes(needle))
++      const firstGroup = (item.categoryPath || item.category || 'Без группы').split('/')[0].trim() || 'Без группы'
++      const matchesGroup = group === 'all' || firstGroup === group
++      const haystack = [item.name, item.category, item.categoryPath, item.unit, item.comment, item.description, item.composition, item.cookingMethod].join(' ').toLowerCase()
++      return matchesGroup && (!needle || haystack.includes(needle))
+     })
+-  }, [items, query, type])
+-
+-  function startCreate() {
+-    setEditing(null)
+-    setShowForm(true)
+-  }
+-
+-  function handleSave(form) {
+-    onSave(form)
+-    setShowForm(false)
+-    setEditing(null)
+-    setMessage('РџРѕР·РёС†РёСЏ СЃРѕС…СЂР°РЅРµРЅР°')
+-  }
++  }, [items, query, group])
+ 
+   async function handleImport(file) {
+     if (!file) return
+@@ -141,63 +158,85 @@
+       const text = await fileToText(file)
+       const rows = file.name.toLowerCase().endsWith('.json') ? parseJsonImport(text) : parseCsv(text)
+       const count = onImport(rows)
+-      setMessage(`РРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ РїРѕР·РёС†РёР№: ${count}`)
++      setMessage(`Импортировано позиций: ${count}`)
+     } catch {
+-      setMessage('РќРµ СѓРґР°Р»РѕСЃСЊ РёРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ С„Р°Р№Р». РџСЂРѕРІРµСЂСЊС‚Рµ JSON С„РѕСЂРјР°С‚ Рё РїРѕР»СЏ name,type,category,categoryPath,unit,description,composition,cookingMethod,output.')
++      setMessage('Не удалось импортировать файл. Используйте JSON или CSV с полями name, unit, category, categoryPath.')
+     }
++  }
++
++  function handleSave(form) {
++    onSave(form)
++    setShowForm(false)
++    setEditing(null)
++    setMessage('Сохранено')
+   }
+ 
+   return (
+     <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+       <section style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
+         <div>
+-          <h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°</h1>
+-          <div style={{ color:'#64748b', fontSize:14 }}>РЎРїСЂР°РІРѕС‡РЅРёРє С‚РѕРІР°СЂРѕРІ, РїРѕР»СѓС„Р°Р±СЂРёРєР°С‚РѕРІ, СЃРѕСѓСЃРѕРІ Рё Р·Р°РіРѕС‚РѕРІРѕРє РґР»СЏ Р±С‹СЃС‚СЂРѕРіРѕ Р·Р°РїРѕР»РЅРµРЅРёСЏ РўРўРљ. JSON: id, name, type, category, categoryPath, unit, description, composition, cookingMethod, output.</div>
++          <h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>{title}</h1>
++          <div style={{ color:'#64748b', fontSize:14 }}>{isProduct ? 'Отдельный справочник сырья. Не смешивается с полуфабрикатами.' : 'Отдельный справочник заготовок. Используется при сборке эталонной ТТК.'}</div>
+         </div>
+         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+-          <label style={SEL_ST}>РРјРїРѕСЂС‚ JSON<input type="file" accept=".json,application/json" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
+-          <button onClick={startCreate} style={PRIMARY}>Р”РѕР±Р°РІРёС‚СЊ РїРѕР·РёС†РёСЋ</button>
++          <label style={SEL_ST}>Импорт JSON/CSV<input type="file" accept=".json,.csv,application/json,text/csv" onChange={e => handleImport(e.target.files?.[0])} style={{ display:'none' }} /></label>
++          <button onClick={() => downloadJson(`${storageKey}.json`, items)} style={SEL_ST}>Экспорт JSON</button>
++          <button onClick={() => { setEditing(null); setShowForm(true) }} style={PRIMARY}>Добавить</button>
+         </div>
+       </section>
+ 
+       <section style={{ ...SECTION, display:'grid', gridTemplateColumns:'1fr 220px', gap:12 }}>
+-        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ, РєР°С‚РµРіРѕСЂРёРё, РѕРїРёСЃР°РЅРёСЋ" style={INPUT} />
+-        <select value={type} onChange={e => setType(e.target.value)} style={{ ...SEL_ST, width:'100%' }}>
+-          {NOMENCLATURE_FILTERS.map(filter => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
++        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Поиск по названию, группе, описанию" style={INPUT} />
++        <select value={group} onChange={e => setGroup(e.target.value)} style={{ ...SEL_ST, width:'100%' }}>
++          <option value="all">Все группы</option>
++          {tree.map(([name, count]) => <option key={name} value={name}>{name} ({count})</option>)}
+         </select>
+       </section>
+ 
+       {message && <div style={{ ...SECTION, padding:12, color:'#475569' }}>{message}</div>}
+-      {showForm && <NomenclatureForm initial={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null) }} />}
+-
+-      <section style={SECTION}>
+-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+-          <h2 style={{ margin:0 }}>РџРѕР·РёС†РёРё ({filtered.length})</h2>
+-          <div style={{ color:'#64748b', fontSize:12 }}>localStorage key: <b>klevo_nomenclature</b></div>
+-        </div>
+-
+-        {filtered.length === 0 ? (
+-          <div style={{ textAlign:'center', color:'#94a3b8', padding:34 }}>РџРѕР·РёС†РёРё РЅРµ РЅР°Р№РґРµРЅС‹. Р”РѕР±Р°РІСЊС‚Рµ РІСЂСѓС‡РЅСѓСЋ РёР»Рё РёРјРїРѕСЂС‚РёСЂСѓР№С‚Рµ CSV/JSON.</div>
+-        ) : (
+-          <div style={{ overflowX:'auto' }}>
+-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+-              <thead><tr>{['РќР°Р·РІР°РЅРёРµ','РўРёРї','РљР°С‚РµРіРѕСЂРёСЏ','РџСѓС‚СЊ РєР°С‚РµРіРѕСЂРёРё','Р•Рґ. РёР·Рј.','РљСЂР°С‚РєРѕРµ РѕРїРёСЃР°РЅРёРµ',''].map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead>
+-              <tbody>{filtered.map(item => <tr key={item.id}>
+-                <td style={{ ...TD, fontWeight:900, color:'#0f172a' }}>{item.name || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'}</td>
+-                <td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{NOMENCLATURE_TYPE_LABELS[item.type] || item.type}</Tag></td>
+-                <td style={TD}>{item.category || 'вЂ”'}</td>
+-                <td style={TD}>{item.categoryPath || 'вЂ”'}</td>
+-                <td style={TD}>{item.unit || 'вЂ”'}</td>
+-                <td style={TD}>{item.description || item.composition || 'вЂ”'}</td>
+-                <td style={{ ...TD, whiteSpace:'nowrap' }}><button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button> <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>РЈРґР°Р»РёС‚СЊ</button></td>
+-              </tr>)}</tbody>
+-            </table>
++      {showForm && <CatalogForm kind={kind} initial={editing} onSave={handleSave} onCancel={() => { setShowForm(false); setEditing(null) }} />}
++
++      <section style={{ display:'grid', gridTemplateColumns:'260px 1fr', gap:16 }}>
++        <aside style={SECTION}>
++          <h3 style={{ marginTop:0 }}>Древо групп</h3>
++          <button onClick={() => setGroup('all')} style={{ ...TREE_BUTTON, background:group === 'all' ? '#eef2ff' : 'transparent', color:group === 'all' ? '#4f46e5' : '#334155' }}>Все ({items.length})</button>
++          {tree.map(([name, count]) => (
++            <button key={name} onClick={() => setGroup(name)} style={{ ...TREE_BUTTON, background:group === name ? '#eef2ff' : 'transparent', color:group === name ? '#4f46e5' : '#334155' }}>📁 {name} <span style={{ marginLeft:'auto', color:'#94a3b8' }}>{count}</span></button>
++          ))}
++        </aside>
++
++        <div style={SECTION}>
++          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
++            <h2 style={{ margin:0 }}>Позиции ({filtered.length})</h2>
++            <div style={{ color:'#64748b', fontSize:12 }}>localStorage key: <b>{storageKey}</b></div>
+           </div>
+-        )}
++
++          {filtered.length === 0 ? (
++            <div style={{ textAlign:'center', color:'#94a3b8', padding:34 }}>Позиции не найдены.</div>
++          ) : (
++            <div style={{ overflowX:'auto' }}>
++              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
++                <thead><tr>{['Наименование','Категория','Древо групп','Ед. изм.', isProduct ? 'Комментарий' : 'Состав / технология',''].map(header => <th key={header} style={TH}>{header}</th>)}</tr></thead>
++                <tbody>{filtered.map(item => <tr key={item.id}>
++                  <td style={{ ...TD, fontWeight:900, color:'#0f172a' }}>{item.name || 'Без названия'}</td>
++                  <td style={TD}><Tag color="#4f46e5" bg="#eef2ff">{item.category || '—'}</Tag></td>
++                  <td style={TD}>{item.categoryPath || '—'}</td>
++                  <td style={TD}>{item.unit || '—'}</td>
++                  <td style={TD}>{isProduct ? (item.comment || '—') : (item.composition || item.cookingMethod || item.description || '—')}</td>
++                  <td style={{ ...TD, whiteSpace:'nowrap' }}>
++                    <button onClick={() => { setEditing(item); setShowForm(true) }} style={SEL_ST}>Редактировать</button>{' '}
++                    <button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button>
++                  </td>
++                </tr>)}</tbody>
++              </table>
++            </div>
++          )}
++        </div>
+       </section>
+     </div>
+   )
+ }
+ 
++const TREE_BUTTON = { width:'100%', display:'flex', alignItems:'center', gap:8, border:'none', borderRadius:10, padding:'9px 10px', cursor:'pointer', fontWeight:800, textAlign:'left', marginBottom:4 }
+ const TH = { textAlign:'left', padding:10, background:'#f8fafc', border:'1px solid #e5e7eb', color:'#475569', fontSize:11, textTransform:'uppercase' }
+ const TD = { padding:10, border:'1px solid #e5e7eb', verticalAlign:'top' }
+--- a/src/pages/ReferenceTtk.jsx
++++ b/src/pages/ReferenceTtk.jsx
+@@ -1,26 +1,17 @@
+ import { useMemo, useState } from 'react'
+ import { Tag, SEL_ST } from '../components/ui.jsx'
+ import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
+-import { NOMENCLATURE_TYPE_LABELS } from '../hooks/useNomenclature.js'
+ 
+-const STATUS_LABELS = {
+-  draft: 'Р§РµСЂРЅРѕРІРёРє',
+-  approved: 'Р“РѕС‚РѕРІР° Рє РїРµС‡Р°С‚Рё',
+-}
+-
+-const STATUS_COLORS = {
+-  draft: '#64748b',
+-  approved: '#16a34a',
+-}
+-
++const STATUS_LABELS = { draft: 'Черновик', approved: 'Готова к печати' }
++const STATUS_COLORS = { draft: '#64748b', approved: '#16a34a' }
+ const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
+ const FIELD = { display:'flex', flexDirection:'column', gap:6 }
+ const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
+ const PRIMARY = { ...SEL_ST, background:'#6366f1', borderColor:'#6366f1', color:'#fff', fontWeight:900, padding:'11px 16px' }
+-const EMPTY_ROW = { qty: '', name: '', semifinished: '', description: '' }
++const EMPTY_ROW = { qty:'', itemType:'product', itemId:'', name:'', semifinished:'', description:'' }
+ 
+ function formatDate(value) {
+-  if (!value) return 'вЂ”'
++  if (!value) return '—'
+   return new Date(value).toLocaleDateString('ru-RU')
+ }
+ 
+@@ -44,40 +35,22 @@
+ }
+ 
+ function escapeHtml(value = '') {
+-  return String(value)
+-    .replaceAll('&', '&amp;')
+-    .replaceAll('<', '&lt;')
+-    .replaceAll('>', '&gt;')
+-    .replaceAll('"', '&quot;')
+-    .replaceAll("'", '&#039;')
++  return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')
+ }
+ 
+ function makePrintableHtml(ttk) {
+   const rows = ttk.rows?.length ? ttk.rows : [EMPTY_ROW]
+   const rowsHtml = rows.map(row => `<tr><td>${escapeHtml(row.qty)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.semifinished)}</td><td>${escapeHtml(row.description)}</td></tr>`).join('')
+-  const photoHtml = ttk.photo?.dataUrl ? `<img class="dish-photo" src="${ttk.photo.dataUrl}" alt="${escapeHtml(ttk.title)}">` : '<div class="photo-placeholder">Р¤РѕС‚Рѕ Р±Р»СЋРґР°</div>'
++  const photoHtml = ttk.photo?.dataUrl ? `<img class="dish-photo" src="${ttk.photo.dataUrl}" alt="${escapeHtml(ttk.title)}">` : '<div class="photo-placeholder">Фото блюда</div>'
+ 
+-  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(ttk.title || 'Р­С‚Р°Р»РѕРЅРЅР°СЏ РўРўРљ')}</title><style>
+-    @page{size:A4;margin:10mm}
+-    *{box-sizing:border-box}
+-    body{margin:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#111827}
++  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(ttk.title || 'Эталонная ТТК')}</title><style>
++    @page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#111827}
+     .page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:13mm 12mm 12mm;display:flex;flex-direction:column;gap:8mm}
+     h1{margin:0;text-align:center;font-size:23px;line-height:1.15;text-transform:uppercase;letter-spacing:.02em}
+-    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;line-height:1.25}
+-    th,td{border:1.5px solid #111827;padding:6px 7px;vertical-align:top;word-break:break-word}
+-    th{background:#f3f4f6;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+-    th:nth-child(1),td:nth-child(1){width:18%;text-align:center;font-weight:700}
+-    th:nth-child(2),td:nth-child(2){width:25%;font-weight:700}
+-    th:nth-child(3),td:nth-child(3){width:29%}
+-    th:nth-child(4),td:nth-child(4){width:28%}
+-    .output{font-size:17px;font-weight:800;border:1.5px solid #111827;padding:8px 10px;width:max-content;min-width:190px}
+-    .photo-wrap{margin-top:auto}
+-    .dish-photo{width:100%;height:112mm;object-fit:cover;border:1.5px solid #111827;display:block}
+-    .photo-placeholder{height:112mm;border:1.5px dashed #9ca3af;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:18px;background:#f9fafb}
+-    .meta{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+-    .date{font-size:11px;color:#6b7280}
+-    @media print{body{background:#fff}.page{margin:0;width:auto;min-height:0;box-shadow:none}.no-print{display:none!important}}
+-  </style></head><body><main class="page"><h1>${escapeHtml(ttk.title || 'РќР°Р·РІР°РЅРёРµ Р±Р»СЋРґР°')}</h1><table><thead><tr><th>РљРѕР»-РІРѕ</th><th>РќР°РёРјРµРЅРѕРІР°РЅРёРµ</th><th>Рџ/С„</th><th>РћРїРёСЃР°РЅРёРµ</th></tr></thead><tbody>${rowsHtml}</tbody></table><div class="meta"><div class="output">Р’С‹С…РѕРґ: ${escapeHtml(ttk.output || 'вЂ”')}</div><div class="date">РћР±РЅРѕРІР»РµРЅРѕ: ${escapeHtml(formatDate(ttk.updatedAt))}</div></div><div class="photo-wrap">${photoHtml}</div></main></body></html>`
++    table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;line-height:1.25}th,td{border:1.5px solid #111827;padding:6px 7px;vertical-align:top;word-break:break-word}
++    th{background:#f3f4f6;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.03em}th:nth-child(1),td:nth-child(1){width:18%;text-align:center;font-weight:700}th:nth-child(2),td:nth-child(2){width:25%;font-weight:700}th:nth-child(3),td:nth-child(3){width:29%}th:nth-child(4),td:nth-child(4){width:28%}
++    .output{font-size:17px;font-weight:800;border:1.5px solid #111827;padding:8px 10px;width:max-content;min-width:190px}.photo-wrap{margin-top:auto}.dish-photo{width:100%;height:112mm;object-fit:cover;border:1.5px solid #111827;display:block}.photo-placeholder{height:112mm;border:1.5px dashed #9ca3af;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:18px;background:#f9fafb}.meta{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}.date{font-size:11px;color:#6b7280}@media print{body{background:#fff}.page{margin:0;width:auto;min-height:0;box-shadow:none}.no-print{display:none!important}}
++  </style></head><body><main class="page"><h1>${escapeHtml(ttk.title || 'Название блюда')}</h1><table><thead><tr><th>Кол-во</th><th>Наименование</th><th>П/Ф</th><th>Описание</th></tr></thead><tbody>${rowsHtml}</tbody></table><div class="meta"><div class="output">Выход: ${escapeHtml(ttk.output || '—')}</div><div class="date">Обновлено: ${escapeHtml(formatDate(ttk.updatedAt))}</div></div><div class="photo-wrap">${photoHtml}</div></main></body></html>`
+ }
+ 
+ function TtkStatus({ status }) {
+@@ -85,175 +58,72 @@
+ }
+ 
+ function Photo({ file, label }) {
+-  return (
+-    <div style={{ background:'#f8fafc', border:'1px dashed #cbd5e1', borderRadius:14, minHeight:150, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
+-      {file?.dataUrl ? <img src={file.dataUrl} alt={label} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span style={{ color:'#94a3b8', fontSize:13 }}>{label}</span>}
+-    </div>
+-  )
++  return <div style={{ background:'#f8fafc', border:'1px dashed #cbd5e1', borderRadius:14, minHeight:150, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>{file?.dataUrl ? <img src={file.dataUrl} alt={label} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <span style={{ color:'#94a3b8', fontSize:13 }}>{label}</span>}</div>
+ }
+ 
+ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }) {
+-  return (
+-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+-      <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}>
+-        <div>
+-          <h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>Р­С‚Р°Р»РѕРЅРЅС‹Рµ РўРўРљ</h1>
+-          <div style={{ color:'#64748b', fontSize:14 }}>РљРѕСЂРѕС‚РєРёРµ РїРµС‡Р°С‚РЅС‹Рµ РєР°СЂС‚С‹ A4 РґР»СЏ РїРѕРІР°СЂР°: СЃС‚СЂРѕРєРё, РІС‹С…РѕРґ Рё С„РѕС‚Рѕ РїРѕРґР°С‡Рё.</div>
+-        </div>
+-        <button onClick={onCreate} style={PRIMARY}>РЎРѕР·РґР°С‚СЊ РўРўРљ</button>
+-      </div>
+-
+-      {items.length === 0 ? (
+-        <div style={{ ...SECTION, textAlign:'center', padding:44 }}>
+-          <div style={{ fontSize:46 }}>рџ“„</div>
+-          <h2 style={{ margin:'8px 0', color:'#0f172a' }}>РџРѕРєР° РЅРµС‚ РїРµС‡Р°С‚РЅС‹С… СЌС‚Р°Р»РѕРЅРЅС‹С… РўРўРљ</h2>
+-          <p style={{ color:'#64748b' }}>РЎРѕР·РґР°Р№С‚Рµ РєРѕСЂРѕС‚РєСѓСЋ РєР°СЂС‚Сѓ: РЅР°Р·РІР°РЅРёРµ, РІС‹С…РѕРґ, СЃС‚СЂРѕРєРё С‚Р°Р±Р»РёС†С‹ Рё РѕРґРЅРѕ Р±РѕР»СЊС€РѕРµ С„РѕС‚Рѕ Р±Р»СЋРґР°.</p>
+-          <button onClick={onCreate} style={PRIMARY}>РЎРѕР·РґР°С‚СЊ РїРµСЂРІСѓСЋ РўРўРљ</button>
+-        </div>
+-      ) : (
+-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>
+-          {items.map(item => (
+-            <div key={item.id} style={{ ...SECTION, padding:0, overflow:'hidden' }}>
+-              <div style={{ height:180, background:'#f8fafc' }}><Photo file={item.photo} label="Р¤РѕС‚Рѕ Р±Р»СЋРґР°" /></div>
+-              <div style={{ padding:16 }}>
+-                <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'flex-start' }}>
+-                  <h3 style={{ margin:'0 0 6px', fontSize:18, color:'#0f172a' }}>{item.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'}</h3>
+-                  <TtkStatus status={item.status} />
+-                </div>
+-                <div style={{ color:'#64748b', fontSize:12, lineHeight:1.7 }}>
+-                  Р’С‹С…РѕРґ: {item.output || 'вЂ”'}<br />
+-                  РЎС‚СЂРѕРє: {item.rows?.length || 0} В· РѕР±РЅРѕРІР»РµРЅРѕ {formatDate(item.updatedAt)}
+-                </div>
+-                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:12 }}>
+-                  <button onClick={() => onOpen(item)} style={SEL_ST}>РћС‚РєСЂС‹С‚СЊ</button>
+-                  <button onClick={() => onEdit(item)} style={SEL_ST}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
+-                  <button onClick={() => onDownload(item)} style={SEL_ST}>РЎРєР°С‡Р°С‚СЊ JSON</button>
+-                </div>
+-              </div>
+-            </div>
+-          ))}
+-        </div>
+-      )}
+-    </div>
+-  )
++  return <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
++    <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center', gap:12 }}><div><h1 style={{ margin:'0 0 6px', fontSize:28, color:'#0f172a' }}>Эталонные ТТК</h1><div style={{ color:'#64748b', fontSize:14 }}>Короткие печатные карты A4 для повара: строки, выход и фото подачи.</div></div><button onClick={onCreate} style={PRIMARY}>Создать ТТК</button></div>
++    {items.length === 0 ? <div style={{ ...SECTION, textAlign:'center', padding:44 }}><div style={{ fontSize:46 }}>📄</div><h2 style={{ margin:'8px 0', color:'#0f172a' }}>Пока нет эталонных ТТК</h2><p style={{ color:'#64748b' }}>Создайте короткую карту: название, выход, строки таблицы и одно большое фото блюда.</p><button onClick={onCreate} style={PRIMARY}>Создать первую ТТК</button></div> : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>{items.map(item => <div key={item.id} style={{ ...SECTION, padding:0, overflow:'hidden' }}><div style={{ height:180, background:'#f8fafc' }}><Photo file={item.photo} label="Фото блюда" /></div><div style={{ padding:16 }}><div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'flex-start' }}><h3 style={{ margin:'0 0 6px', fontSize:18, color:'#0f172a' }}>{item.title || 'Без названия'}</h3><TtkStatus status={item.status} /></div><div style={{ color:'#64748b', fontSize:12, lineHeight:1.7 }}>Выход: {item.output || '—'}<br />Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}</div><div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:12 }}><button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button><button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button><button onClick={() => onDownload(item)} style={SEL_ST}>Скачать JSON</button></div></div></div>)}</div>}
++  </div>
+ }
+ 
+ function FileInput({ label, accept, value, onChange }) {
+-  return (
+-    <label style={FIELD}>
+-      <span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span>
+-      <input type="file" accept={accept} onChange={async e => onChange(await fileToPayload(e.target.files?.[0]))} style={{ fontSize:12 }} />
+-      {value?.name && <span style={{ fontSize:11, color:'#64748b' }}>Р—Р°РіСЂСѓР¶РµРЅРѕ: {value.name}</span>}
+-    </label>
+-  )
++  return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><input type="file" accept={accept} onChange={async e => onChange(await fileToPayload(e.target.files?.[0]))} style={{ fontSize:12 }} />{value?.name && <span style={{ fontSize:11, color:'#64748b' }}>Загружено: {value.name}</span>}</label>
+ }
+ 
+ function TextField({ label, value, onChange }) {
+   return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span><input value={value || ''} onChange={e => onChange(e.target.value)} style={INPUT} /></label>
+ }
+ 
+-export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatureItem, onCancel, onSave }) {
+-  const [form, setForm] = useState(() => initial || createEmptyReferenceTtk())
+-  const nomenclatureByName = useMemo(() => new Map(nomenclature.map(item => [item.name.trim().toLowerCase(), item])), [nomenclature])
++export function ReferenceTtkForm({ initial, products = [], semifinished = [], onSaveProduct, onSaveSemifinished, onCancel, onSave }) {
++  const [form, setForm] = useState(() => ({ ...(initial || createEmptyReferenceTtk()), rows: (initial?.rows?.length ? initial.rows : [{ ...EMPTY_ROW }]).map(row => ({ ...EMPTY_ROW, ...row, itemType: row.itemType || (row.semifinished ? 'semifinished' : 'product') })) }))
+ 
+-  function update(field, value) {
+-    setForm(current => ({ ...current, [field]: value }))
+-  }
++  const productsByName = useMemo(() => new Map(products.map(item => [item.name.trim().toLowerCase(), item])), [products])
++  const pfByName = useMemo(() => new Map(semifinished.map(item => [item.name.trim().toLowerCase(), item])), [semifinished])
+ 
+-  function updateRow(index, field, value) {
+-    setForm(current => ({ ...current, rows: current.rows.map((row, i) => i === index ? { ...row, [field]: value } : row) }))
+-  }
++  function update(field, value) { setForm(current => ({ ...current, [field]: value })) }
++  function updateRow(index, field, value) { setForm(current => ({ ...current, rows: current.rows.map((row, i) => i === index ? { ...row, [field]: value } : row) })) }
+ 
+-  function selectNomenclature(index, name) {
+-    const item = nomenclatureByName.get(name.trim().toLowerCase())
+-    if (!item) {
+-      updateRow(index, 'name', name)
+-      return
+-    }
+-
+-    const shouldFillDetails = ['semifinished', 'sauce', 'prep'].includes(item.type)
+-
++  function selectItem(index, name) {
+     setForm(current => ({
+       ...current,
+-      rows: current.rows.map((row, i) => i === index ? {
+-        ...row,
+-        name: item.name,
+-        semifinished: shouldFillDetails && item.composition ? item.composition : row.semifinished,
+-        description: shouldFillDetails && item.cookingMethod ? item.cookingMethod : row.description,
+-      } : row),
++      rows: current.rows.map((row, i) => {
++        if (i !== index) return row
++        const map = row.itemType === 'semifinished' ? pfByName : productsByName
++        const item = map.get(name.trim().toLowerCase())
++        if (!item) return { ...row, name, itemId:'' }
++        if (row.itemType === 'semifinished') return { ...row, itemId:item.id, name:item.name, semifinished:item.composition || row.semifinished, description:item.cookingMethod || item.description || row.description }
++        return { ...row, itemId:item.id, name:item.name }
++      }),
+     }))
+   }
+ 
+-  function addRowToNomenclature(row) {
+-    if (!row.name?.trim() || !onSaveNomenclatureItem) return
+-    const unit = row.qty?.replace(/[0-9.,\s]/g, '').trim() || 'Рі'
+-    onSaveNomenclatureItem({
+-      name: row.name.trim(),
+-      type: row.semifinished ? 'semifinished' : 'product',
+-      category: '',
+-      unit,
+-      description: row.description || '',
+-      composition: row.semifinished || '',
+-      cookingMethod: row.description || '',
+-      output: row.qty || '',
+-    })
++  function changeRowType(index, itemType) {
++    setForm(current => ({ ...current, rows: current.rows.map((row, i) => i === index ? { ...row, itemType, itemId:'', name:'', semifinished:'', description:'' } : row) }))
+   }
+ 
+-  return (
+-    <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ display:'flex', flexDirection:'column', gap:16 }}>
+-      <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+-        <div>
+-          <h1 style={{ margin:'0 0 6px', fontSize:28 }}>РЎРѕР·РґР°С‚СЊ РєРѕСЂРѕС‚РєСѓСЋ СЌС‚Р°Р»РѕРЅРЅСѓСЋ РўРўРљ</h1>
+-          <div style={{ color:'#64748b', fontSize:14 }}>РћРґРЅР° РўРўРљ = РѕРґРЅР° РїРµС‡Р°С‚РЅР°СЏ СЃС‚СЂР°РЅРёС†Р° A4: РЅР°Р·РІР°РЅРёРµ, С‚Р°Р±Р»РёС†Р°, РІС‹С…РѕРґ Рё С„РѕС‚Рѕ.</div>
+-        </div>
+-        <div style={{ display:'flex', gap:8 }}><button type="button" onClick={onCancel} style={SEL_ST}>РћС‚РјРµРЅР°</button><button type="submit" style={PRIMARY}>РЎРѕС…СЂР°РЅРёС‚СЊ</button></div>
+-      </div>
++  function addMissing(row) {
++    if (!row.name?.trim()) return
++    if (row.itemType === 'semifinished' && onSaveSemifinished) onSaveSemifinished({ name:row.name.trim(), unit:'г', composition:row.semifinished || '', cookingMethod:row.description || '', description:row.description || '', output:row.qty || '' })
++    if (row.itemType === 'product' && onSaveProduct) onSaveProduct({ name:row.name.trim(), unit:row.qty?.replace(/[0-9.,\s]/g, '').trim() || 'г', comment:row.description || '' })
++  }
+ 
+-      <section style={SECTION}>
+-        <h2 style={{ marginTop:0 }}>РћСЃРЅРѕРІРЅРѕРµ</h2>
+-        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 180px', gap:12 }}>
+-          <TextField label="РќР°Р·РІР°РЅРёРµ Р±Р»СЋРґР°" value={form.title} onChange={v => update('title', v)} />
+-          <TextField label="Р’С‹С…РѕРґ" value={form.output} onChange={v => update('output', v)} />
+-          <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>РЎС‚Р°С‚СѓСЃ</span><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Р§РµСЂРЅРѕРІРёРє</option><option value="approved">Р“РѕС‚РѕРІР° Рє РїРµС‡Р°С‚Рё</option></select></label>
+-        </div>
+-      </section>
+-
+-      <section style={SECTION}>
+-        <h2 style={{ marginTop:0 }}>Р¤РѕС‚Рѕ Р±Р»СЋРґР°</h2>
+-        <div style={{ display:'grid', gridTemplateColumns:'minmax(240px,360px) 1fr', gap:16, alignItems:'center' }}>
+-          <Photo file={form.photo} label="Р‘РѕР»СЊС€РѕРµ С„РѕС‚Рѕ РїРѕРґР°С‡Рё Р±Р»СЋРґР°" />
+-          <FileInput label="Р—Р°РіСЂСѓР·РёС‚СЊ С„РѕС‚Рѕ Р±Р»СЋРґР°" accept="image/*" value={form.photo} onChange={v => update('photo', v)} />
+-        </div>
+-      </section>
+-
+-      <section style={SECTION}>
+-        <datalist id="nomenclature-options">{nomenclature.map(item => <option key={item.id} value={item.name}>{NOMENCLATURE_TYPE_LABELS[item.type] || item.type} В· {item.unit}</option>)}</datalist>
+-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:12 }}>
+-          <div>
+-            <h2 style={{ margin:'0 0 4px' }}>РЎС‚СЂРѕРєРё РўРўРљ</h2>
+-            <div style={{ color:'#64748b', fontSize:13 }}>Р—Р°РїРѕР»РЅРёС‚Рµ РєРѕРјРїР°РєС‚РЅСѓСЋ С‚Р°Р±Р»РёС†Сѓ РґР»СЏ РїРѕРІР°СЂР°: РєРѕР»РёС‡РµСЃС‚РІРѕ, СЌР»РµРјРµРЅС‚, СЃРѕСЃС‚Р°РІ Рї/С„ Рё РєРѕСЂРѕС‚РєРѕРµ РґРµР№СЃС‚РІРёРµ.</div>
+-          </div>
+-          <button type="button" onClick={() => update('rows', [...(form.rows || []), { ...EMPTY_ROW }])} style={PRIMARY}>Р”РѕР±Р°РІРёС‚СЊ СЃС‚СЂРѕРєСѓ</button>
+-        </div>
+-
+-        <div style={{ overflowX:'auto' }}>
+-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+-            <thead><tr>{['РљРѕР»-РІРѕ','РќР°РёРјРµРЅРѕРІР°РЅРёРµ','Рџ/С„ СЃРѕСЃС‚Р°РІ','РћРїРёСЃР°РЅРёРµ',''].map(h => <th key={h} style={{ textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead>
+-            <tbody>{(form.rows || []).map((row, index) => <tr key={index}>
+-              <td style={TD}><input placeholder={nomenclatureByName.get(row.name?.trim().toLowerCase())?.unit ? `100 ${nomenclatureByName.get(row.name.trim().toLowerCase()).unit}` : '100 Рі'} value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td>
+-              <td style={TD}>
+-                <input list="nomenclature-options" placeholder="Р‘СЂР°СѓРЅРё Рї/С„" value={row.name} onChange={e => selectNomenclature(index, e.target.value)} style={INPUT} />
+-                {row.name && !nomenclatureByName.has(row.name.trim().toLowerCase()) && <button type="button" onClick={() => addRowToNomenclature(row)} style={{ ...SEL_ST, marginTop:6, fontSize:11 }}>Р”РѕР±Р°РІРёС‚СЊ РІ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂСѓ</button>}
+-              </td>
+-              <td style={TD}><textarea placeholder="СЏР№С†Рѕ, СЃР°С…Р°СЂ, С€РѕРєРѕР»Р°Рґ..." value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA_IN_TABLE} /></td>
+-              <td style={TD}><textarea placeholder="Р—Р°РјРµС€Р°С‚СЊ, РІС‹РїРµРєР°С‚СЊ..." value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA_IN_TABLE} /></td>
+-              <td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>Г—</button></td>
+-            </tr>)}</tbody>
+-          </table>
+-        </div>
+-      </section>
+-    </form>
+-  )
++  return <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ display:'flex', flexDirection:'column', gap:16 }}>
++    <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center' }}><div><h1 style={{ margin:'0 0 6px', fontSize:28 }}>Создать короткую эталонную ТТК</h1><div style={{ color:'#64748b', fontSize:14 }}>Одна ТТК = одна печатная страница A4. В строках выбирай товар или полуфабрикат.</div></div><div style={{ display:'flex', gap:8 }}><button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button><button type="submit" style={PRIMARY}>Сохранить</button></div></div>
++    <section style={SECTION}><h2 style={{ marginTop:0 }}>Основное</h2><div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 180px', gap:12 }}><TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} /><TextField label="Выход" value={form.output} onChange={v => update('output', v)} /><label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>Статус</span><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="approved">Готова к печати</option></select></label></div></section>
++    <section style={SECTION}><h2 style={{ marginTop:0 }}>Фото блюда</h2><div style={{ display:'grid', gridTemplateColumns:'minmax(240px,360px) 1fr', gap:16, alignItems:'center' }}><Photo file={form.photo} label="Большое фото подачи блюда" /><FileInput label="Загрузить фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} /></div></section>
++    <section style={SECTION}>
++      <datalist id="product-options">{products.map(item => <option key={item.id} value={item.name}>{item.unit}</option>)}</datalist>
++      <datalist id="semifinished-options">{semifinished.map(item => <option key={item.id} value={item.name}>{item.output || item.unit}</option>)}</datalist>
++      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:12, marginBottom:12 }}><div><h2 style={{ margin:'0 0 4px' }}>Строки ТТК</h2><div style={{ color:'#64748b', fontSize:13 }}>Источник строки выбирается отдельно: товар или полуфабрикат. У полуфабриката подтягиваются состав и технология.</div></div><button type="button" onClick={() => update('rows', [...(form.rows || []), { ...EMPTY_ROW }])} style={PRIMARY}>Добавить строку</button></div>
++      <div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['Тип','Кол-во','Наименование','П/Ф состав','Описание',''].map(h => <th key={h} style={{ textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }}>{h}</th>)}</tr></thead><tbody>{(form.rows || []).map((row, index) => {
++        const map = row.itemType === 'semifinished' ? pfByName : productsByName
++        const exists = row.name && map.has(row.name.trim().toLowerCase())
++        return <tr key={index}><td style={TD}><select value={row.itemType || 'product'} onChange={e => changeRowType(index, e.target.value)} style={INPUT}><option value="product">Товар</option><option value="semifinished">П/Ф</option></select></td><td style={TD}><input placeholder="100 г" value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td><td style={TD}><input list={row.itemType === 'semifinished' ? 'semifinished-options' : 'product-options'} placeholder={row.itemType === 'semifinished' ? 'Соус п/ф' : 'Креветка'} value={row.name} onChange={e => selectItem(index, e.target.value)} style={INPUT} />{row.name && !exists && <button type="button" onClick={() => addMissing(row)} style={{ ...SEL_ST, marginTop:6, fontSize:11 }}>Добавить в {row.itemType === 'semifinished' ? 'полуфабрикаты' : 'товары'}</button>}</td><td style={TD}><textarea value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA_IN_TABLE} /></td><td style={TD}><textarea value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA_IN_TABLE} /></td><td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>×</button></td></tr>
++      })}</tbody></table></div>
++    </section>
++  </form>
+ }
+ 
+ const TD = { padding:6, border:'1px solid #e5e7eb', verticalAlign:'top' }
+@@ -262,66 +132,13 @@
+ export function ReferenceTtkView({ ttk, onBack, onEdit, onDuplicate, onDelete }) {
+   const html = useMemo(() => makePrintableHtml(ttk), [ttk])
+   if (!ttk) return null
+-
+-  function downloadJson() {
+-    downloadBlob(`${ttk.title || 'short-reference-ttk'}.json`, JSON.stringify(ttk, null, 2), 'application/json')
+-  }
+-
+-  function printTtk() {
+-    const win = window.open('', '_blank')
+-    win.document.write(html)
+-    win.document.close()
+-    win.focus()
+-    win.print()
+-  }
+-
+-  return (
+-    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+-      <div style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}>
+-        <div>
+-          <button onClick={onBack} style={{ ...SEL_ST, marginBottom:12 }}>в†ђ Р­С‚Р°Р»РѕРЅРЅС‹Рµ РўРўРљ</button>
+-          <div><TtkStatus status={ttk.status} /></div>
+-          <h1 style={{ margin:'10px 0 6px', fontSize:28, color:'#0f172a' }}>{ttk.title || 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'}</h1>
+-          <div style={{ color:'#64748b' }}>Р’С‹С…РѕРґ: {ttk.output || 'вЂ”'} В· СЃС‚СЂРѕРє: {ttk.rows?.length || 0} В· РѕР±РЅРѕРІР»РµРЅРѕ {formatDate(ttk.updatedAt)}</div>
+-        </div>
+-        <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}>
+-          <button onClick={onEdit} style={PRIMARY}>Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ</button>
+-          <button onClick={printTtk} style={SEL_ST}>РЎРєР°С‡Р°С‚СЊ / РџРµС‡Р°С‚СЊ</button>
+-          <button onClick={downloadJson} style={SEL_ST}>РЎРєР°С‡Р°С‚СЊ JSON</button>
+-          <button onClick={onDuplicate} style={SEL_ST}>Р”СѓР±Р»РёСЂРѕРІР°С‚СЊ</button>
+-          <button onClick={onDelete} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>РЈРґР°Р»РёС‚СЊ</button>
+-        </div>
+-      </div>
+-
+-      <div style={{ display:'flex', justifyContent:'center', overflow:'auto', padding:'16px 0 32px' }}>
+-        <PrintablePage ttk={ttk} />
+-      </div>
+-    </div>
+-  )
++  function downloadJson() { downloadBlob(`${ttk.title || 'short-reference-ttk'}.json`, JSON.stringify(ttk, null, 2), 'application/json') }
++  function printTtk() { const win = window.open('', '_blank'); win.document.write(html); win.document.close(); win.focus(); win.print() }
++  return <div style={{ display:'flex', flexDirection:'column', gap:16 }}><div style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12, alignItems:'center' }}><div><button onClick={onBack} style={{ ...SEL_ST, marginBottom:12 }}>← Эталонные ТТК</button><div><TtkStatus status={ttk.status} /></div><h1 style={{ margin:'10px 0 6px', fontSize:28, color:'#0f172a' }}>{ttk.title || 'Без названия'}</h1><div style={{ color:'#64748b' }}>Выход: {ttk.output || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}</div></div><div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'flex-end' }}><button onClick={onEdit} style={PRIMARY}>Редактировать</button><button onClick={printTtk} style={SEL_ST}>Скачать / Печать</button><button onClick={downloadJson} style={SEL_ST}>Скачать JSON</button><button onClick={onDuplicate} style={SEL_ST}>Дублировать</button><button onClick={onDelete} style={{ ...SEL_ST, color:'#dc2626', borderColor:'#fecaca' }}>Удалить</button></div></div><div style={{ display:'flex', justifyContent:'center', overflow:'auto', padding:'16px 0 32px' }}><PrintablePage ttk={ttk} /></div></div>
+ }
+ 
+ function PrintablePage({ ttk }) {
+-  return (
+-    <article style={{ width:'210mm', minHeight:'297mm', background:'#fff', boxShadow:'0 24px 70px rgba(15,23,42,.16)', padding:'13mm 12mm 12mm', display:'flex', flexDirection:'column', gap:'8mm' }}>
+-      <h1 style={{ margin:0, textAlign:'center', fontSize:23, lineHeight:1.15, textTransform:'uppercase', letterSpacing:'.02em', color:'#111827' }}>{ttk.title || 'РќР°Р·РІР°РЅРёРµ Р±Р»СЋРґР°'}</h1>
+-      <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:12, lineHeight:1.25 }}>
+-        <thead><tr>{['РљРѕР»-РІРѕ','РќР°РёРјРµРЅРѕРІР°РЅРёРµ','Рџ/С„','РћРїРёСЃР°РЅРёРµ'].map((h, i) => <th key={h} style={{ ...PRINT_TH, width:['18%','25%','29%','28%'][i] }}>{h}</th>)}</tr></thead>
+-        <tbody>{(ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map((row, index) => <tr key={index}>
+-          <td style={{ ...PRINT_TD, textAlign:'center', fontWeight:800 }}>{row.qty}</td>
+-          <td style={{ ...PRINT_TD, fontWeight:800 }}>{row.name}</td>
+-          <td style={PRINT_TD}>{row.semifinished}</td>
+-          <td style={PRINT_TD}>{row.description}</td>
+-        </tr>)}</tbody>
+-      </table>
+-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12 }}>
+-        <div style={{ fontSize:17, fontWeight:900, border:'1.5px solid #111827', padding:'8px 10px', minWidth:190 }}>Р’С‹С…РѕРґ: {ttk.output || 'вЂ”'}</div>
+-        <div style={{ fontSize:11, color:'#6b7280' }}>РћР±РЅРѕРІР»РµРЅРѕ: {formatDate(ttk.updatedAt)}</div>
+-      </div>
+-      <div style={{ marginTop:'auto' }}>
+-        {ttk.photo?.dataUrl ? <img src={ttk.photo.dataUrl} alt={ttk.title} style={{ width:'100%', height:'112mm', objectFit:'cover', border:'1.5px solid #111827', display:'block' }} /> : <div style={{ height:'112mm', border:'1.5px dashed #9ca3af', display:'flex', alignItems:'center', justifyContent:'center', color:'#6b7280', background:'#f9fafb', fontSize:18 }}>Р¤РѕС‚Рѕ Р±Р»СЋРґР°</div>}
+-      </div>
+-    </article>
+-  )
++  return <article style={{ width:'210mm', minHeight:'297mm', background:'#fff', boxShadow:'0 24px 70px rgba(15,23,42,.16)', padding:'13mm 12mm 12mm', display:'flex', flexDirection:'column', gap:'8mm' }}><h1 style={{ margin:0, textAlign:'center', fontSize:23, lineHeight:1.15, textTransform:'uppercase', letterSpacing:'.02em', color:'#111827' }}>{ttk.title || 'Название блюда'}</h1><table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed', fontSize:12, lineHeight:1.25 }}><thead><tr>{['Кол-во','Наименование','П/Ф','Описание'].map((h, i) => <th key={h} style={{ ...PRINT_TH, width:['18%','25%','29%','28%'][i] }}>{h}</th>)}</tr></thead><tbody>{(ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map((row, index) => <tr key={index}><td style={{ ...PRINT_TD, textAlign:'center', fontWeight:800 }}>{row.qty}</td><td style={{ ...PRINT_TD, fontWeight:800 }}>{row.name}</td><td style={PRINT_TD}>{row.semifinished}</td><td style={PRINT_TD}>{row.description}</td></tr>)}</tbody></table><div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', gap:12 }}><div style={{ fontSize:17, fontWeight:900, border:'1.5px solid #111827', padding:'8px 10px', minWidth:190 }}>Выход: {ttk.output || '—'}</div><div style={{ fontSize:11, color:'#6b7280' }}>Обновлено: {formatDate(ttk.updatedAt)}</div></div><div style={{ marginTop:'auto' }}>{ttk.photo?.dataUrl ? <img src={ttk.photo.dataUrl} alt={ttk.title} style={{ width:'100%', height:'112mm', objectFit:'cover', border:'1.5px solid #111827', display:'block' }} /> : <div style={{ height:'112mm', border:'1.5px dashed #9ca3af', display:'flex', alignItems:'center', justifyContent:'center', color:'#6b7280', background:'#f9fafb', fontSize:18 }}>Фото блюда</div>}</div></article>
+ }
+ 
+ const PRINT_TH = { border:'1.5px solid #111827', padding:'6px 7px', verticalAlign:'top', wordBreak:'break-word', background:'#f3f4f6', textAlign:'center', fontSize:11, textTransform:'uppercase', letterSpacing:'.03em' }
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -2,132 +2,79 @@
+ import { Tag } from './components/ui.jsx'
+ import { BookIcon, ClipIcon, GraduationIcon, GridIcon } from './components/icons.jsx'
+ import { createEmptyReferenceTtk, useReferenceTtkStore } from './hooks/useReferenceTtk.js'
+-import { useNomenclatureStore } from './hooks/useNomenclature.js'
++import { useProductsStore, useSemifinishedStore } from './hooks/useNomenclature.js'
+ import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView } from './pages/ReferenceTtk.jsx'
+-import { NomenclaturePage } from './pages/Nomenclature.jsx'
++import { CatalogPage } from './pages/Nomenclature.jsx'
+ 
+ const NAV_ITEMS = [
+-  { id: 'list', label: 'Р­С‚Р°Р»РѕРЅРЅС‹Рµ РўРўРљ', icon: BookIcon },
+-  { id: 'create', label: 'РЎРѕР·РґР°С‚СЊ РўРўРљ', icon: ClipIcon },
+-  { id: 'nomenclature', label: 'РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°', icon: GridIcon },
+-  { id: 'settings', label: 'РќР°СЃС‚СЂРѕР№РєРё', icon: GraduationIcon },
++  { id: 'products', label: 'Товары', icon: GridIcon },
++  { id: 'semifinished', label: 'Полуфабрикаты', icon: ClipIcon },
++  { id: 'list', label: 'Эталонные ТТК', icon: BookIcon },
++  { id: 'settings', label: 'Настройки', icon: GraduationIcon },
+ ]
+ 
+-function SafeIcon({ icon: Icon }) {
+-  return typeof Icon === 'function' ? <Icon /> : null
+-}
++function SafeIcon({ icon: Icon }) { return typeof Icon === 'function' ? <Icon /> : null }
+ 
+-function downloadJson(item) {
+-  const blob = new Blob([JSON.stringify(item, null, 2)], { type: 'application/json' })
++function downloadJsonFile(name, data) {
++  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' })
+   const url = URL.createObjectURL(blob)
+   const link = document.createElement('a')
+   link.href = url
+-  link.download = `${item.title || 'reference-ttk'}.json`
++  link.download = name
+   link.click()
+   URL.revokeObjectURL(url)
+ }
+ 
+-function Settings() {
+-  return (
+-    <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24, maxWidth:760 }}>
+-      <h1 style={{ margin:'0 0 8px', color:'#0f172a' }}>РќР°СЃС‚СЂРѕР№РєРё</h1>
+-      <p style={{ color:'#64748b', lineHeight:1.6 }}>
+-        Р”Р°РЅРЅС‹Рµ РєРѕСЂРѕС‚РєРёС… СЌС‚Р°Р»РѕРЅРЅС‹С… РўРўРљ РІСЂРµРјРµРЅРЅРѕ С…СЂР°РЅСЏС‚СЃСЏ РІ localStorage Р±СЂР°СѓР·РµСЂР°. Р—Р°РїРѕР»РЅРёС‚Рµ РЅР°Р·РІР°РЅРёРµ, РІС‹С…РѕРґ, СЃС‚СЂРѕРєРё С‚Р°Р±Р»РёС†С‹, РґРѕР±Р°РІСЊС‚Рµ С„РѕС‚Рѕ Р±Р»СЋРґР° Рё СЂР°СЃРїРµС‡Р°С‚Р°Р№С‚Рµ РѕРґРЅСѓ СЃС‚СЂР°РЅРёС†Сѓ A4.
+-      </p>
+-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
+-        <Tag color="#6366f1" bg="#eef2ff">РћРґРЅР° РўРўРљ = РѕРґРЅР° СЃС‚СЂР°РЅРёС†Р°</Tag>
+-        <Tag color="#16a34a" bg="#f0fdf4">Р‘РµР· CRM Рё Р·Р°РґР°РЅРёР№</Tag>
+-        <Tag color="#d97706" bg="#fffbeb">РџРµС‡Р°С‚СЊ / PDF С‡РµСЂРµР· Р±СЂР°СѓР·РµСЂ</Tag>
+-      </div>
++function Settings({ products, semifinished, ttks }) {
++  return <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:24, maxWidth:860 }}>
++    <h1 style={{ margin:'0 0 8px', color:'#0f172a' }}>Настройки</h1>
++    <p style={{ color:'#64748b', lineHeight:1.6 }}>Данные хранятся локально в браузере отдельно: товары, полуфабрикаты и эталонные ТТК. Для безопасности регулярно скачивайте резервную копию JSON.</p>
++    <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:12 }}>
++      <Tag color="#6366f1" bg="#eef2ff">Товары: {products.length}</Tag>
++      <Tag color="#16a34a" bg="#f0fdf4">Полуфабрикаты: {semifinished.length}</Tag>
++      <Tag color="#d97706" bg="#fffbeb">ТТК: {ttks.length}</Tag>
+     </div>
+-  )
++    <div style={{ marginTop:18 }}>
++      <button onClick={() => downloadJsonFile('klevo_ttk_backup.json', { version:1, exportedAt:new Date().toISOString(), products, semifinished, referenceTtks:ttks })} style={{ border:'1px solid #cbd5e1', borderRadius:12, background:'#fff', padding:'10px 14px', cursor:'pointer', fontWeight:800 }}>Скачать резервную копию JSON</button>
++    </div>
++  </div>
+ }
+ 
+ export default function App() {
+   const [section, setSection] = useState('list')
+   const [selectedId, setSelectedId] = useState(null)
+   const [editing, setEditing] = useState(null)
++
+   const { items, saveTtk, deleteTtk, duplicateTtk } = useReferenceTtkStore()
+-  const { items: nomenclature, saveItem: saveNomenclatureItem, deleteItem: deleteNomenclatureItem, importItems: importNomenclatureItems } = useNomenclatureStore()
++  const productsStore = useProductsStore()
++  const semifinishedStore = useSemifinishedStore()
+ 
+   const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId])
+-  const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || 'Р­С‚Р°Р»РѕРЅРЅС‹Рµ РўРўРљ'
++  const pageTitle = section === 'view' ? selected?.title || 'Карточка ТТК' : (NAV_ITEMS.find(item => item.id === section)?.label || 'Эталонные ТТК')
+ 
+-  function openItem(item) {
+-    setSelectedId(item.id)
+-    setEditing(null)
+-    setSection('view')
+-  }
++  function openItem(item) { setSelectedId(item.id); setEditing(null); setSection('view') }
++  function editItem(item) { setEditing(item); setSection('create') }
++  function createItem() { setEditing(createEmptyReferenceTtk()); setSection('create') }
++  function handleSave(form) { const saved = saveTtk(form); setSelectedId(saved.id); setEditing(null); setSection('view') }
++  function handleDuplicate() { const copy = duplicateTtk(selected?.id); if (copy) openItem(copy) }
++  function handleDelete() { if (!selected) return; deleteTtk(selected.id); setSelectedId(null); setSection('list') }
+ 
+-  function editItem(item) {
+-    setEditing(item)
+-    setSection('create')
+-  }
+-
+-  function createItem() {
+-    setEditing(createEmptyReferenceTtk())
+-    setSection('create')
+-  }
+-
+-  function handleSave(form) {
+-    const saved = saveTtk(form)
+-    setSelectedId(saved.id)
+-    setEditing(null)
+-    setSection('view')
+-  }
+-
+-  function handleDuplicate() {
+-    const copy = duplicateTtk(selected?.id)
+-    if (copy) openItem(copy)
+-  }
+-
+-  function handleDelete() {
+-    if (!selected) return
+-    deleteTtk(selected.id)
+-    setSelectedId(null)
+-    setSection('list')
+-  }
+-
+-  return (
+-    <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
+-      <aside style={{ width:236, background:'#0f172a', color:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
+-        <div style={{ padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,.08)' }}>
+-          <div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>РђРєР°РґРµРјРёСЏ РљР»С‘РІРѕ</div>
+-          <div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>РљРѕСЂРѕС‚РєР°СЏ РїРµС‡Р°С‚РЅР°СЏ РўРўРљ A4</div>
+-        </div>
+-        <nav style={{ padding:10, flex:1 }}>
+-          {NAV_ITEMS.map(item => {
+-            const active = section === item.id || (item.id === 'list' && section === 'view')
+-            return (
+-              <button key={item.id} onClick={() => item.id === 'create' ? createItem() : setSection(item.id)} style={{
+-                width:'100%', display:'flex', alignItems:'center', gap:10, padding:'11px 12px', borderRadius:10,
+-                border:'none', cursor:'pointer', marginBottom:4, textAlign:'left', background:active ? '#6366f1' : 'transparent',
+-                color:active ? '#fff' : '#cbd5e1', fontWeight:active ? 800 : 600, fontSize:13,
+-              }}>
+-                <SafeIcon icon={item.icon} />
+-                {item.label}
+-              </button>
+-            )
+-          })}
+-        </nav>
+-        <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#64748b', fontSize:11, lineHeight:1.6 }}>
+-          {items.length} СЌС‚Р°Р»РѕРЅРЅС‹С… РўРўРљ<br />{nomenclature.length} РїРѕР·РёС†РёР№ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹<br />localStorage В· Р±РµР· backend
+-        </div>
+-      </aside>
+-
+-      <main style={{ flex:1, minWidth:0 }}>
+-        <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+-          <div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{section === 'view' ? selected?.title || 'РљР°СЂС‚РѕС‡РєР° РўРўРљ' : pageTitle}</div>
+-          <Tag color="#6366f1" bg="#eef2ff">РЎРѕР·РґР°Р» в†’ Р·Р°РїРѕР»РЅРёР» СЃС‚СЂРѕРєРё в†’ РґРѕР±Р°РІРёР» С„РѕС‚Рѕ в†’ СЂР°СЃРїРµС‡Р°С‚Р°Р»</Tag>
+-        </header>
+-        <div style={{ padding:28 }}>
+-          {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={downloadJson} />}
+-          {section === 'create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onSaveNomenclatureItem={saveNomenclatureItem} onCancel={() => setSection('list')} onSave={handleSave} />}
+-          {section === 'view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('list')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
+-          {section === 'nomenclature' && <NomenclaturePage items={nomenclature} onSave={saveNomenclatureItem} onDelete={deleteNomenclatureItem} onImport={importNomenclatureItems} />}
+-          {section === 'settings' && <Settings />}
+-        </div>
+-      </main>
+-    </div>
+-  )
++  return <div style={{ display:'flex', minHeight:'100vh', background:'#f8fafc' }}>
++    <aside style={{ width:236, background:'#0f172a', color:'#fff', display:'flex', flexDirection:'column', flexShrink:0 }}>
++      <div style={{ padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,.08)' }}><div style={{ fontSize:22, fontWeight:900, letterSpacing:-.5 }}>База знаний ТТК</div><div style={{ fontSize:11, color:'#94a3b8', marginTop:6, lineHeight:1.5 }}>Товары → Полуфабрикаты → Эталонные ТТК</div></div>
++      <nav style={{ padding:10, flex:1 }}>{NAV_ITEMS.map(item => { const active = section === item.id || (item.id === 'list' && section === 'view'); return <button key={item.id} onClick={() => item.id === 'list' ? setSection('list') : setSection(item.id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'11px 12px', borderRadius:10, border:'none', cursor:'pointer', marginBottom:4, textAlign:'left', background:active ? '#6366f1' : 'transparent', color:active ? '#fff' : '#cbd5e1', fontWeight:active ? 800 : 600, fontSize:13 }}><SafeIcon icon={item.icon} />{item.label}</button> })}</nav>
++      <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#94a3b8', fontSize:11, lineHeight:1.6 }}>{productsStore.items.length} товаров<br />{semifinishedStore.items.length} полуфабрикатов<br />{items.length} эталонных ТТК</div>
++    </aside>
++    <main style={{ flex:1, minWidth:0 }}>
++      <header style={{ position:'sticky', top:0, zIndex:50, background:'#fff', borderBottom:'1px solid #e8ecf0', padding:'16px 28px', display:'flex', justifyContent:'space-between', alignItems:'center' }}><div style={{ fontSize:17, fontWeight:900, color:'#0f172a' }}>{pageTitle}</div><Tag color="#6366f1" bg="#eef2ff">Выбирай в ТТК: товар или полуфабрикат</Tag></header>
++      <div style={{ padding:28 }}>
++        {section === 'products' && <CatalogPage kind="product" items={productsStore.items} onSave={productsStore.saveItem} onDelete={productsStore.deleteItem} onImport={productsStore.importItems} />}
++        {section === 'semifinished' && <CatalogPage kind="semifinished" items={semifinishedStore.items} onSave={semifinishedStore.saveItem} onDelete={semifinishedStore.deleteItem} onImport={semifinishedStore.importItems} />}
++        {section === 'list' && <ReferenceTtkList items={items} onOpen={openItem} onEdit={editItem} onCreate={createItem} onDownload={item => downloadJsonFile(`${item.title || 'reference-ttk'}.json`, item)} />}
++        {section === 'create' && <ReferenceTtkForm initial={editing} products={productsStore.items} semifinished={semifinishedStore.items} onSaveProduct={productsStore.saveItem} onSaveSemifinished={semifinishedStore.saveItem} onCancel={() => setSection('list')} onSave={handleSave} />}
++        {section === 'view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('list')} onEdit={() => editItem(selected)} onDuplicate={handleDuplicate} onDelete={handleDelete} />}
++        {section === 'settings' && <Settings products={productsStore.items} semifinished={semifinishedStore.items} ttks={items} />}
++      </div>
++    </main>
++  </div>
+ }
