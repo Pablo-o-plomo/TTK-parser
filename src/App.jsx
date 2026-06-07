@@ -1,5 +1,6 @@
 import { cloneElement, isValidElement, useMemo, useState } from 'react'
 import { useData } from './hooks/useData.js'
+import { useWorkflowStore } from './hooks/useWorkflowStore.js'
 import { Loading, ErrorScreen, Tag } from './components/ui.jsx'
 import {
   BookIcon,
@@ -12,9 +13,13 @@ import {
   Ico,
 } from './components/icons.jsx'
 import { NAV_ITEMS } from './constants.js'
+import { NETWORK_RESTAURANTS } from './domain/workflow.js'
 
 import Dashboard   from './pages/Dashboard.jsx'
 import Dishes      from './pages/Dishes.jsx'
+import Comparison  from './pages/Comparison.jsx'
+import ReviewTasks from './pages/ReviewTasks.jsx'
+import TaskSubmission from './pages/TaskSubmission.jsx'
 import PF          from './pages/PF.jsx'
 import Stations    from './pages/Stations.jsx'
 import Photos      from './pages/Photos.jsx'
@@ -24,6 +29,8 @@ import Attestation from './pages/Attestation.jsx'
 const NAV_ICONS = {
   dashboard:   GridIcon,
   dishes:      BookIcon,
+  comparison:  ClipIcon,
+  review:      GraduationIcon,
   pf:          BowlIcon,
   stations:    FireIcon,
   photos:      CameraIcon,
@@ -40,6 +47,8 @@ function SafeIcon({ icon: Icon, ...props }) {
 export default function App() {
   const [section, setSection] = useState('dashboard')
   const [selectedRestaurant, setSelectedRestaurant] = useState('all')
+  const [referenceRestaurant, setReferenceRestaurant] = useState('Петровка')
+  const { tasks, manualLinks, createTask, submitTask, updateTaskStatus, addManualLink } = useWorkflowStore()
   const { dishes, pf, disc, loading, error } = useData()
 
   const restaurantCounts = useMemo(() => dishes.reduce((acc, dish) => {
@@ -55,6 +64,10 @@ export default function App() {
 
   const visibleErrors = useMemo(() => visibleDishes.filter(dish => dish.hasErrors).length, [visibleDishes])
   const visibleClean = visibleDishes.length - visibleErrors
+  const taskMatch = window.location.pathname.match(/^\/tasks\/([^/]+)/)
+  const taskForRestaurant = taskMatch ? tasks.find(task => task.id === taskMatch[1]) : null
+
+  if (taskMatch) return <TaskSubmission task={taskForRestaurant} submitTask={submitTask} />
 
   if (loading) return <Loading />
   if (error)   return <ErrorScreen msg={error} />
@@ -100,7 +113,7 @@ export default function App() {
         </nav>
 
         <div style={{ padding:'12px 14px', borderTop:'1px solid rgba(255,255,255,.07)', fontSize:10, color:'#334155', lineHeight:1.7 }}>
-          <div>Ростов · Петровка</div>
+          <div>Петровка · Ростов · Сочи · Краснодар · Авиапарк</div>
           <div>{dishes.length} ТТК · {pf.length} п/ф</div>
           <div>Аудит: июнь 2026</div>
         </div>
@@ -116,16 +129,26 @@ export default function App() {
           </div>
           <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', justifyContent:'flex-end' }}>
             <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#475569' }}>
-              Ресторан
+              Фильтр
               <select
                 value={selectedRestaurant}
                 onChange={e => setSelectedRestaurant(e.target.value)}
                 style={{ border:'1px solid #dbe3ea', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:700, color:'#0f172a', background:'#fff', outline:'none' }}
               >
                 <option value="all">Все рестораны ({dishes.length})</option>
-                {['Ростов', 'Петровка'].map(restaurant => (
+                {NETWORK_RESTAURANTS.map(restaurant => (
                   <option key={restaurant} value={restaurant}>{restaurant} ({restaurantCounts[restaurant] || 0})</option>
                 ))}
+              </select>
+            </label>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#475569' }}>
+              Эталон
+              <select
+                value={referenceRestaurant}
+                onChange={e => setReferenceRestaurant(e.target.value)}
+                style={{ border:'1px solid #dbe3ea', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:700, color:'#0f172a', background:'#fff', outline:'none' }}
+              >
+                {NETWORK_RESTAURANTS.map(restaurant => <option key={restaurant} value={restaurant}>{restaurant}</option>)}
               </select>
             </label>
             <Tag color="#ef4444" bg="#fef2f2">{Ico.warn} {visibleErrors} ошибок</Tag>
@@ -135,8 +158,10 @@ export default function App() {
 
         {/* Content */}
         <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} go={setSection} />}
+          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} go={setSection} />}
           {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
+          {section === 'comparison'  && <Comparison   dishes={dishes} tasks={tasks} manualLinks={manualLinks} addManualLink={addManualLink} createTask={createTask} referenceRestaurant={referenceRestaurant} setReferenceRestaurant={setReferenceRestaurant} />}
+          {section === 'review'      && <ReviewTasks  tasks={tasks} updateTaskStatus={updateTaskStatus} />}
           {section === 'pf'          && <PF           pf={pf} />}
           {section === 'stations'    && <Stations     dishes={visibleDishes} />}
           {section === 'photos'      && <Photos       dishes={visibleDishes} />}

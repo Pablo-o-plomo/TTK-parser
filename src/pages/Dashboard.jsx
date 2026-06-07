@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Pill } from '../components/ui.jsx'
 import { CAT_ICONS, STA_ICONS, REST_COLOR } from '../constants.js'
+import { APPROVAL_STATUS } from '../domain/workflow.js'
 
 function buildStats(dishes) {
   return dishes.reduce((acc, dish) => {
@@ -21,11 +22,15 @@ function buildStats(dishes) {
   }, { restaurants: {}, categories: {}, stations: {}, withErrors: 0, sharedDishes: 0, names: new Set() })
 }
 
-export default function Dashboard({ dishes, pf, go }) {
+export default function Dashboard({ dishes, pf, tasks = [], go }) {
   const stats = useMemo(() => buildStats(dishes), [dishes])
   const topCats = Object.entries(stats.categories).sort((a,b) => b[1].total - a[1].total).slice(0, 9)
   const stations = Object.entries(stats.stations).sort((a,b) => b[1].total - a[1].total)
   const cleanTTK = dishes.length - stats.withErrors
+  const waitingTasks = tasks.filter(task => task.status === APPROVAL_STATUS.WAITING_SUBMISSION).length
+  const reviewTasks = tasks.filter(task => task.status === APPROVAL_STATUS.SUBMITTED || task.status === APPROVAL_STATUS.IN_REVIEW).length
+  const approvedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.APPROVED).length
+  const closedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.CLOSED).length
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
@@ -58,6 +63,11 @@ export default function Dashboard({ dishes, pf, go }) {
         <Pill icon="✅" v={cleanTTK}           label="Чистых ТТК"        color="#16a34a" />
         <Pill icon="⚠️" v={stats.withErrors}  label="Требуют проверки"  color="#ef4444" />
         <Pill icon="↔️" v={stats.sharedDishes} label="Кросс-сеть"       color="#7c3aed" />
+        <Pill icon="📨" v={tasks.length}        label="Заданий отправлено" color="#d97706" />
+        <Pill icon="⏳" v={waitingTasks}        label="Ждём ответ"        color="#d97706" />
+        <Pill icon="🔎" v={reviewTasks}         label="На проверке"       color="#7c3aed" />
+        <Pill icon="✅" v={approvedTasks}       label="Подтверждено"      color="#16a34a" />
+        <Pill icon="🏁" v={closedTasks}         label="Закрыто по сети"   color="#0f766e" />
         <Pill icon="📦" v={pf.length}          label="Наим. п/ф"         color="#d97706" />
       </div>
 
@@ -102,6 +112,8 @@ export default function Dashboard({ dishes, pf, go }) {
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))', gap:9 }}>
           {[
             { l:'Все ТТК',        i:'📋', s:'dishes',      c:'#6366f1' },
+            { l:'Сверка ТТК',     i:'⚖️', s:'comparison', c:'#6366f1' },
+            { l:'Проверка заданий', i:'🔎', s:'review',      c:'#7c3aed' },
             { l:'Аудит ошибок',   i:'⚠️', s:'audit',       c:'#ef4444' },
             { l:'Список п/ф',     i:'📦', s:'pf',          c:'#7c3aed' },
             { l:'Станции',        i:'🔥', s:'stations',    c:'#0891b2' },

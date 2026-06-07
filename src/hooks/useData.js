@@ -12,6 +12,9 @@ const RESTAURANT_ALIASES = {
   'petrovka': 'Петровка',
   'сахалин': 'Сахалин',
   'сочи': 'Сочи',
+  'краснодар': 'Краснодар',
+  'авиапарк': 'Авиапарк',
+  'aviapark': 'Авиапарк',
 }
 
 function asText(value, fallback = '') {
@@ -48,52 +51,64 @@ function pickExtraFields(row) {
   return Object.fromEntries(entries.filter(([, value]) => value !== undefined && value !== null && value !== ''))
 }
 
-export function normalizeDish(row, fallbackRestaurant = 'Ростов', index = 0) {
-  if (Array.isArray(row)) {
-    const [id, restaurant, name, ttk, date, category, station, output, errorBits = 0, isShared = 0, hasErrorsRaw = 0, pfCount = 0, pfRaw = '', qcG = null] = row
-    const pfList = splitList(pfRaw)
-    const rest = normalizeRestaurant(restaurant, fallbackRestaurant)
+export function normalizeRostovDish(row, fallbackRestaurant = 'Ростов', index = 0) {
+  const [id, restaurant, name, ttk, date, category, station, output, errorBits = 0, isShared = 0, hasErrorsRaw = 0, pfCount = 0, pfRaw = '', qcG = null] = Array.isArray(row) ? row : []
+  const pfList = splitList(pfRaw)
+  const rest = normalizeRestaurant(restaurant, fallbackRestaurant)
+  const code = asText(ttk)
 
-    return {
-      id: asText(id, `${rest}_${ttk || index}`),
-      restaurant: rest,
-      name: asText(name, 'Без названия'),
-      ttk: asText(ttk),
-      ttk_num: asText(ttk),
-      date: asText(date),
-      category: asText(category, 'Прочее'),
-      station: asText(station, 'Горячий цех'),
-      output: Number(output) || 0,
-      errorBits: Number(errorBits) || 0,
-      hasErrors: Boolean(Number(hasErrorsRaw) || Number(errorBits)),
-      isShared: Boolean(Number(isShared)),
-      pfCount: Number(pfCount) || pfList.length,
-      pfList,
-      qcG: qcG === null || qcG === '' ? null : Number(qcG),
-      components: pfList,
-      extras: {},
-      raw: row,
-    }
+  return {
+    id: asText(id, `${rest}_${code || index}`),
+    restaurant: rest,
+    code,
+    ttk: code,
+    ttk_num: code,
+    name: asText(name, 'Без названия'),
+    date: asText(date),
+    category: asText(category, 'Прочее'),
+    station: asText(station, 'Горячий цех'),
+    output: Number(output) || 0,
+    errorBits: Number(errorBits) || 0,
+    hasErrors: Boolean(Number(hasErrorsRaw) || Number(errorBits)),
+    isShared: Boolean(Number(isShared)),
+    pfCount: Number(pfCount) || pfList.length,
+    pfList,
+    qcG: qcG === null || qcG === '' ? null : Number(qcG),
+    components: pfList,
+    ingredients: pfList,
+    technology: '',
+    photos: [],
+    pfPhotos: [],
+    approvalStatus: 'new',
+    extras: {},
+    raw: row,
   }
+}
 
-  if (!row || typeof row !== 'object') {
-    return normalizeDish([], fallbackRestaurant, index)
+export function normalizePetrovkaDish(row, fallbackRestaurant = 'Петровка', index = 0) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    return normalizeRostovDish(row, fallbackRestaurant, index)
   }
 
   const restaurant = normalizeRestaurant(firstDefined(row.restaurant, row.rest, row.city, row.branch, row.place), fallbackRestaurant)
-  const ttk = asText(firstDefined(row.ttk, row.ttk_num, row.code, row.number, row.id), `${index + 1}`)
-  const componentsRaw = firstDefined(row.components, row.componentsRaw, row.ingredients, row.ингредиенты, row.pfRaw, row.pf)
+  const code = asText(firstDefined(row.code, row.ttk, row.ttk_num, row.number, row.id), `${index + 1}`)
+  const componentsRaw = firstDefined(row.components, row.componentsRaw, row.pfRaw, row.pf, row.semifinished, row.пф)
+  const ingredientsRaw = firstDefined(row.ingredients, row.ингредиенты, row.состав, row.products, componentsRaw)
   const components = splitList(componentsRaw)
-  const pfList = splitList(firstDefined(row.pfList, row.pfRaw, row.semifinished, row.пф))
+  const ingredients = splitList(ingredientsRaw)
+  const extras = pickExtraFields(row)
+  const photos = splitList(firstDefined(row.photos, row.photo, row.images, row.фото))
+  const pfPhotos = splitList(firstDefined(row.pfPhotos, row.semifinishedPhotos, row.пфФото, row.pf_photo))
   const errorBits = Number(firstDefined(row.errorBits, row.errors, row.error_bits, 0)) || 0
   const hasErrors = Boolean(firstDefined(row.hasErrors, row.has_errors, row.invalid, false)) || errorBits > 0
 
   return {
-    id: asText(firstDefined(row.id, row.uuid, row.key), `${restaurant}_${ttk}_${index}`),
+    id: asText(firstDefined(row.id, row.uuid, row.key), `${restaurant}_${code}_${index}`),
     restaurant,
+    code,
+    ttk: code,
+    ttk_num: code,
     name: asText(firstDefined(row.name, row.title, row.dish, row.dishName, row.блюдо, row.название), 'Без названия'),
-    ttk,
-    ttk_num: ttk,
     date: asText(firstDefined(row.date, row.updatedAt, row.updated_at, row.дата)),
     category: asText(firstDefined(row.category, row.group, row.section, row.категория), 'Прочее'),
     station: asText(firstDefined(row.station, row.shop, row.department, row.станция, row.цех), 'Горячий цех'),
@@ -101,13 +116,23 @@ export function normalizeDish(row, fallbackRestaurant = 'Ростов', index = 
     errorBits,
     hasErrors,
     isShared: Boolean(firstDefined(row.isShared, row.shared, row.crossNetwork, false)),
-    pfCount: Number(firstDefined(row.pfCount, row.pf_count, 0)) || pfList.length,
-    pfList,
+    pfCount: Number(firstDefined(row.pfCount, row.pf_count, 0)) || components.length,
+    pfList: components,
     qcG: firstDefined(row.qcG, row.weight, row.вес, null) === null ? null : Number(firstDefined(row.qcG, row.weight, row.вес, null)),
     components,
-    extras: pickExtraFields(row),
+    ingredients,
+    technology: asText(firstDefined(row.technology, row.tech, row.технология, row.cooking, row.process)),
+    photos,
+    pfPhotos,
+    approvalStatus: asText(firstDefined(row.approvalStatus, row.status), 'new'),
+    extras,
     raw: row,
   }
+}
+
+export function normalizeDish(raw, restaurant = 'Ростов', index = 0) {
+  if (Array.isArray(raw)) return normalizeRostovDish(raw, restaurant, index)
+  return normalizePetrovkaDish(raw, restaurant, index)
 }
 
 async function fetchDataset({ url, required, restaurant }) {
