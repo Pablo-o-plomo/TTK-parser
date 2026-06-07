@@ -1,8 +1,38 @@
-import { Pill, Tag } from '../components/ui.jsx'
-import { SUMMARY, CAT_STATS, CAT_ICONS, STA_STATS, STA_ICONS, REST_COLOR, REST_BG } from '../constants.js'
+import { useMemo } from 'react'
+import { Pill } from '../components/ui.jsx'
+import { CAT_ICONS, STA_ICONS, REST_COLOR } from '../constants.js'
+import { APPROVAL_STATUS } from '../domain/workflow.js'
+import { calculateNetworkAnalytics } from '../services/standardsService.js'
 
-export default function Dashboard({ dishes, pf, go }) {
-  const topCats = Object.entries(CAT_STATS).sort((a,b) => b[1].total - a[1].total).slice(0, 9)
+function buildStats(dishes) {
+  return dishes.reduce((acc, dish) => {
+    acc.restaurants[dish.restaurant] = (acc.restaurants[dish.restaurant] || 0) + 1
+
+    if (!acc.categories[dish.category]) acc.categories[dish.category] = { total: 0, errors: 0 }
+    acc.categories[dish.category].total += 1
+    if (dish.hasErrors) acc.categories[dish.category].errors += 1
+
+    if (!acc.stations[dish.station]) acc.stations[dish.station] = { total: 0, errors: 0 }
+    acc.stations[dish.station].total += 1
+    if (dish.hasErrors) acc.stations[dish.station].errors += 1
+
+    if (dish.hasErrors) acc.withErrors += 1
+    if (dish.isShared) acc.sharedDishes += 1
+    if (!acc.names.has(dish.name)) acc.names.add(dish.name)
+    return acc
+  }, { restaurants: {}, categories: {}, stations: {}, withErrors: 0, sharedDishes: 0, names: new Set() })
+}
+
+export default function Dashboard({ dishes, pf, tasks = [], uploads = [], go }) {
+  const stats = useMemo(() => buildStats(dishes), [dishes])
+  const topCats = Object.entries(stats.categories).sort((a,b) => b[1].total - a[1].total).slice(0, 9)
+  const stations = Object.entries(stats.stations).sort((a,b) => b[1].total - a[1].total)
+  const cleanTTK = dishes.length - stats.withErrors
+  const waitingTasks = tasks.filter(task => task.status === APPROVAL_STATUS.WAITING_SUBMISSION).length
+  const reviewTasks = tasks.filter(task => task.status === APPROVAL_STATUS.SUBMITTED || task.status === APPROVAL_STATUS.IN_REVIEW).length
+  const approvedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.APPROVED).length
+  const closedTasks = tasks.filter(task => task.status === APPROVAL_STATUS.CLOSED).length
+  const analytics = useMemo(() => calculateNetworkAnalytics({ dishes, tasks, uploads }), [dishes, tasks, uploads])
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:22 }}>
@@ -14,13 +44,13 @@ export default function Dashboard({ dishes, pf, go }) {
         <div style={{ position:'relative' }}>
           <div style={{ fontSize:9, letterSpacing:3, color:'#6366f1', textTransform:'uppercase', fontWeight:700, marginBottom:10 }}>База знаний ресторанной сети</div>
           <h2 style={{ margin:'0 0 10px', fontSize:30, fontWeight:900, letterSpacing:-1 }}>Академия Клёво</h2>
-          <p style={{ margin:'0 0 22px', color:'#94a3b8', fontSize:13.5, maxWidth:480, lineHeight:1.6 }}>
-            Единая платформа стандартизации рецептур, аудита технологических карт и контроля качества. База {SUMMARY.totalTTK} ТТК по трём ресторанам.
+          <p style={{ margin:'0 0 22px', color:'#94a3b8', fontSize:13.5, maxWidth:520, lineHeight:1.6 }}>
+            Единая платформа стандартизации рецептур, аудита технологических карт и контроля качества. База {dishes.length} ТТК по выбранным ресторанам.
           </p>
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-            {Object.entries(SUMMARY.restaurants).map(([r, cnt]) => (
-              <div key={r} style={{ background:'rgba(255,255,255,.08)', borderRadius:10, padding:'10px 16px', border:`1px solid ${REST_COLOR[r]}44` }}>
-                <div style={{ fontSize:20, fontWeight:800, color:REST_COLOR[r] }}>{cnt}</div>
+            {Object.entries(stats.restaurants).map(([r, cnt]) => (
+              <div key={r} style={{ background:'rgba(255,255,255,.08)', borderRadius:10, padding:'10px 16px', border:`1px solid ${(REST_COLOR[r] || '#6366f1')}44` }}>
+                <div style={{ fontSize:20, fontWeight:800, color:REST_COLOR[r] || '#6366f1' }}>{cnt}</div>
                 <div style={{ fontSize:11, color:'#94a3b8' }}>ТТК · {r}</div>
               </div>
             ))}
@@ -30,12 +60,20 @@ export default function Dashboard({ dishes, pf, go }) {
 
       {/* Stat pills */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))', gap:10 }}>
-        <Pill icon="📋" v={SUMMARY.totalTTK}     label="Всего ТТК"         color="#6366f1" />
-        <Pill icon="🔖" v={SUMMARY.uniqueDishes} label="Уникальных блюд"   color="#0891b2" />
-        <Pill icon="✅" v={SUMMARY.cleanTTK}     label="Чистых ТТК"        color="#16a34a" />
-        <Pill icon="⚠️" v={SUMMARY.withErrors}   label="Требуют проверки"  color="#ef4444" />
-        <Pill icon="↔️" v={SUMMARY.sharedDishes} label="Кросс-сеть"        color="#7c3aed" />
-        <Pill icon="📦" v={pf.length}            label="Наим. п/ф"          color="#d97706" />
+        <Pill icon="📋" v={dishes.length}      label="Всего ТТК"         color="#6366f1" />
+        <Pill icon="🔖" v={stats.names.size}  label="Уникальных блюд"   color="#0891b2" />
+        <Pill icon="✅" v={cleanTTK}           label="Чистых ТТК"        color="#16a34a" />
+        <Pill icon="⚠️" v={stats.withErrors}  label="Требуют проверки"  color="#ef4444" />
+        <Pill icon="↔️" v={stats.sharedDishes} label="Кросс-сеть"       color="#7c3aed" />
+        <Pill icon="📨" v={tasks.length}        label="Заданий отправлено" color="#d97706" />
+        <Pill icon="⏳" v={waitingTasks}        label="Ждём ответ"        color="#d97706" />
+        <Pill icon="🔎" v={reviewTasks}         label="На проверке"       color="#7c3aed" />
+        <Pill icon="✅" v={approvedTasks}       label="Подтверждено"      color="#16a34a" />
+        <Pill icon="🏁" v={closedTasks}         label="Закрыто по сети"   color="#0f766e" />
+        <Pill icon="📦" v={pf.length}          label="Наим. п/ф"         color="#d97706" />
+        <Pill icon="📷" v={analytics.withoutPhotos} label="Без фото"      color="#ef4444" />
+        <Pill icon="🧑‍🍳" v={analytics.withoutTechnology} label="Без технологии" color="#d97706" />
+        <Pill icon="📄" v={analytics.withoutPdf} label="Без PDF"          color="#64748b" />
       </div>
 
       {/* Two-column */}
@@ -45,14 +83,14 @@ export default function Dashboard({ dishes, pf, go }) {
           {topCats.map(([cat, v]) => (
             <div key={cat} style={{ marginBottom:9 }}>
               <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                <span style={{ fontSize:12, color:'#374151' }}>{CAT_ICONS[cat]} {cat}</span>
+                <span style={{ fontSize:12, color:'#374151' }}>{CAT_ICONS[cat] || '🍴'} {cat}</span>
                 <span style={{ fontSize:11, color:'#9ca3af' }}>{v.total} · <span style={{ color:'#ef4444' }}>⚠{v.errors}</span></span>
               </div>
               <div style={{ background:'#f3f4f6', borderRadius:4, height:7, overflow:'hidden' }}>
                 <div style={{
                   height:'100%',
                   background:`linear-gradient(90deg,#6366f1 ${((v.total-v.errors)/v.total*100).toFixed(0)}%,#ef4444 0%)`,
-                  width:`${Math.min((v.total/SUMMARY.totalTTK*100*3), 100).toFixed(0)}%`,
+                  width:`${Math.min((v.total / Math.max(dishes.length, 1) * 260), 100).toFixed(0)}%`,
                 }} />
               </div>
             </div>
@@ -60,9 +98,9 @@ export default function Dashboard({ dishes, pf, go }) {
         </div>
         <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🔥 По станциям</div>
-          {Object.entries(STA_STATS).map(([sta, v]) => (
+          {stations.map(([sta, v]) => (
             <div key={sta} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'1px solid #f5f5f5' }}>
-              <div style={{ fontSize:17, width:22 }}>{STA_ICONS[sta]}</div>
+              <div style={{ fontSize:17, width:22 }}>{STA_ICONS[sta] || '🏷️'}</div>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:'#374151' }}>{sta}</div>
                 {v.errors > 0 && <div style={{ fontSize:10, color:'#ef4444' }}>⚠ {v.errors} с ошибками</div>}
@@ -73,12 +111,37 @@ export default function Dashboard({ dishes, pf, go }) {
         </div>
       </div>
 
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:16 }}>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🏆 Рейтинг ресторанов</div>
+          {analytics.restaurantRating.map(item => (
+            <div key={item.restaurant} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:9 }}>
+              <span style={{ width:86, fontSize:12, fontWeight:700 }}>{item.restaurant}</span>
+              <div style={{ flex:1, height:8, background:'#f1f5f9', borderRadius:999, overflow:'hidden' }}><div style={{ width:`${item.score}%`, height:'100%', background:item.score >= 95 ? '#16a34a' : item.score >= 85 ? '#d97706' : '#ef4444' }} /></div>
+              <span style={{ fontSize:12, fontWeight:900 }}>{item.score}%</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>⚠️ Проблемные блюда</div>
+          {analytics.problematicDishes.length ? analytics.problematicDishes.map(item => <div key={item.group.key} style={{ fontSize:12, padding:'6px 0', borderBottom:'1px solid #f1f5f9' }}>{item.group.name} · <b>{item.diffCount}</b> отличий</div>) : <div style={{ color:'#94a3b8', fontSize:12 }}>Нет данных по расхождениям</div>}
+        </div>
+        <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🕓 Последние изменения</div>
+          {analytics.latestChanges.length ? analytics.latestChanges.map((item, i) => <div key={i} style={{ fontSize:12, padding:'6px 0', borderBottom:'1px solid #f1f5f9' }}>{item.text}</div>) : <div style={{ color:'#94a3b8', fontSize:12 }}>История пока пуста</div>}
+          <div style={{ marginTop:10, fontSize:11, color:'#64748b' }}>Среднее время исправления: {analytics.averageFixTimeDays} дн.</div>
+        </div>
+      </div>
+
       {/* Quick actions */}
       <div style={{ background:'#fff', border:'1px solid #e8ecf0', borderRadius:14, padding:'20px' }}>
         <div style={{ fontSize:13, fontWeight:700, color:'#374151', marginBottom:14 }}>🚀 Перейти в раздел</div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(185px,1fr))', gap:9 }}>
           {[
             { l:'Все ТТК',        i:'📋', s:'dishes',      c:'#6366f1' },
+            { l:'Сверка ТТК',     i:'⚖️', s:'comparison', c:'#6366f1' },
+            { l:'Проверка заданий', i:'🔎', s:'review',      c:'#7c3aed' },
+            { l:'Загрузить ТТК',   i:'📤', s:'uploads',     c:'#0891b2' },
             { l:'Аудит ошибок',   i:'⚠️', s:'audit',       c:'#ef4444' },
             { l:'Список п/ф',     i:'📦', s:'pf',          c:'#7c3aed' },
             { l:'Станции',        i:'🔥', s:'stations',    c:'#0891b2' },
