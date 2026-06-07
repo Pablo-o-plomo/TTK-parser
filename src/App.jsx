@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useState } from 'react'
+import { cloneElement, isValidElement, useMemo, useState } from 'react'
 import { useData } from './hooks/useData.js'
 import { Loading, ErrorScreen, Tag } from './components/ui.jsx'
 import {
@@ -11,7 +11,7 @@ import {
   GridIcon,
   Ico,
 } from './components/icons.jsx'
-import { NAV_ITEMS, SUMMARY } from './constants.js'
+import { NAV_ITEMS } from './constants.js'
 
 import Dashboard   from './pages/Dashboard.jsx'
 import Dishes      from './pages/Dishes.jsx'
@@ -39,7 +39,22 @@ function SafeIcon({ icon: Icon, ...props }) {
 
 export default function App() {
   const [section, setSection] = useState('dashboard')
+  const [selectedRestaurant, setSelectedRestaurant] = useState('all')
   const { dishes, pf, disc, loading, error } = useData()
+
+  const restaurantCounts = useMemo(() => dishes.reduce((acc, dish) => {
+    acc[dish.restaurant] = (acc[dish.restaurant] || 0) + 1
+    return acc
+  }, {}), [dishes])
+
+  const visibleDishes = useMemo(() => (
+    selectedRestaurant === 'all'
+      ? dishes
+      : dishes.filter(dish => dish.restaurant === selectedRestaurant)
+  ), [dishes, selectedRestaurant])
+
+  const visibleErrors = useMemo(() => visibleDishes.filter(dish => dish.hasErrors).length, [visibleDishes])
+  const visibleClean = visibleDishes.length - visibleErrors
 
   if (loading) return <Loading />
   if (error)   return <ErrorScreen msg={error} />
@@ -85,8 +100,8 @@ export default function App() {
         </nav>
 
         <div style={{ padding:'12px 14px', borderTop:'1px solid rgba(255,255,255,.07)', fontSize:10, color:'#334155', lineHeight:1.7 }}>
-          <div>РОСТОВ · САХАЛИН · СОЧИ</div>
-          <div>{SUMMARY.totalTTK} ТТК · {pf.length} п/ф</div>
+          <div>Ростов · Петровка</div>
+          <div>{dishes.length} ТТК · {pf.length} п/ф</div>
           <div>Аудит: июнь 2026</div>
         </div>
       </div>
@@ -99,20 +114,33 @@ export default function App() {
           <div style={{ fontSize:16, fontWeight:800, color:'#0f172a' }}>
             {NAV_ITEMS.find(n => n.id === section)?.label}
           </div>
-          <div style={{ display:'flex', gap:7 }}>
-            <Tag color="#ef4444" bg="#fef2f2">{Ico.warn} {SUMMARY.withErrors} ошибок</Tag>
-            <Tag color="#16a34a" bg="#f0fdf4">{Ico.check} {SUMMARY.cleanTTK} чистых</Tag>
+          <div style={{ display:'flex', gap:7, alignItems:'center', flexWrap:'wrap', justifyContent:'flex-end' }}>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#475569' }}>
+              Ресторан
+              <select
+                value={selectedRestaurant}
+                onChange={e => setSelectedRestaurant(e.target.value)}
+                style={{ border:'1px solid #dbe3ea', borderRadius:10, padding:'7px 10px', fontSize:12, fontWeight:700, color:'#0f172a', background:'#fff', outline:'none' }}
+              >
+                <option value="all">Все рестораны ({dishes.length})</option>
+                {['Ростов', 'Петровка'].map(restaurant => (
+                  <option key={restaurant} value={restaurant}>{restaurant} ({restaurantCounts[restaurant] || 0})</option>
+                ))}
+              </select>
+            </label>
+            <Tag color="#ef4444" bg="#fef2f2">{Ico.warn} {visibleErrors} ошибок</Tag>
+            <Tag color="#16a34a" bg="#f0fdf4">{Ico.check} {visibleClean} чистых</Tag>
           </div>
         </div>
 
         {/* Content */}
         <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Dashboard   dishes={dishes} pf={pf} go={setSection} />}
-          {section === 'dishes'      && <Dishes       dishes={dishes} />}
+          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} go={setSection} />}
+          {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
           {section === 'pf'          && <PF           pf={pf} />}
-          {section === 'stations'    && <Stations     dishes={dishes} />}
-          {section === 'photos'      && <Photos       dishes={dishes} />}
-          {section === 'audit'       && <Audit        dishes={dishes} disc={disc} />}
+          {section === 'stations'    && <Stations     dishes={visibleDishes} />}
+          {section === 'photos'      && <Photos       dishes={visibleDishes} />}
+          {section === 'audit'       && <Audit        dishes={visibleDishes} disc={disc} />}
           {section === 'attestation' && <Attestation />}
         </div>
       </div>

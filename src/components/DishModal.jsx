@@ -14,6 +14,13 @@ export default function DishModal({ dish, onClose }) {
   const [photoSlot, setPhotoSlot] = useState(0)
   const [stdStatus, setStdStatus] = useState(0)
   const errs = errBitsToList(dish.errorBits)
+  const extras = dish.extras || {}
+  const ingredients = Array.isArray(extras.ingredients) ? extras.ingredients : dish.components || []
+  const photos = Array.isArray(extras.photos)
+    ? extras.photos
+    : typeof extras.photos === 'string'
+      ? extras.photos.split(/[|;,\n]/).map(src => src.trim()).filter(Boolean)
+      : []
 
   useEffect(() => {
     const h = e => e.key === 'Escape' && onClose()
@@ -49,9 +56,9 @@ export default function DishModal({ dish, onClose }) {
             </button>
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
-            <Tag color={REST_COLOR[dish.restaurant]} bg={REST_BG[dish.restaurant]}>{dish.restaurant}</Tag>
-            <Tag color="#374151" bg="#f3f4f6">{CAT_ICONS[dish.category]} {dish.category}</Tag>
-            <Tag color="#0891b2" bg="#e0f2fe">{STA_ICONS[dish.station]} {dish.station}</Tag>
+            <Tag color={REST_COLOR[dish.restaurant] || '#6366f1'} bg={REST_BG[dish.restaurant] || '#eef2ff'}>{dish.restaurant}</Tag>
+            <Tag color="#374151" bg="#f3f4f6">{CAT_ICONS[dish.category] || '🍴'} {dish.category}</Tag>
+            <Tag color="#0891b2" bg="#e0f2fe">{STA_ICONS[dish.station] || '🏷️'} {dish.station}</Tag>
             {dish.isShared && <Tag color="#7c3aed" bg="#f5f3ff">↔ Кросс-сеть</Tag>}
             <Tag color={dish.hasErrors ? '#ef4444' : '#16a34a'} bg={dish.hasErrors ? '#fef2f2' : '#f0fdf4'}>
               {dish.hasErrors ? '⚠ Требует проверки' : '✓ Чистая ТТК'}
@@ -87,13 +94,27 @@ export default function DishModal({ dish, onClose }) {
 
           {/* Technology + plating */}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            {['🧑‍🍳 Технология приготовления', '🍽️ Описание подачи'].map(lbl => (
+            {[
+              ['🧑‍🍳 Технология приготовления', extras.technology],
+              ['🍽️ Описание подачи', extras.description],
+            ].map(([lbl, value]) => (
               <div key={lbl} style={{ background:'#fffbeb', border:'1.5px dashed #fbbf24', borderRadius:10, padding:'14px 16px' }}>
                 <div style={{ fontSize:11, fontWeight:700, color:'#92400e', marginBottom:5 }}>{lbl}</div>
-                <div style={{ fontSize:11, color:'#b45309', fontStyle:'italic' }}>Требуется описание бренд-шефом</div>
+                <div style={{ fontSize:11, color:'#b45309', fontStyle: value ? 'normal' : 'italic', whiteSpace:'pre-wrap', lineHeight:1.5 }}>
+                  {value || 'Требуется описание бренд-шефом'}
+                </div>
               </div>
             ))}
           </div>
+
+          {ingredients.length > 0 && (
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>🥗 Ингредиенты / состав</div>
+              <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+                {ingredients.map((item, i) => <Tag key={i} color="#0891b2" bg="#e0f2fe" xs>{item}</Tag>)}
+              </div>
+            </div>
+          )}
 
           {/* QC */}
           <div>
@@ -135,9 +156,20 @@ export default function DishModal({ dish, onClose }) {
               <div style={{ fontSize:12, fontWeight:700, color:'#6b7280' }}>
                 Фото {photoSlot + 1}: {PHOTO_SLOTS[photoSlot].desc}
               </div>
-              <div style={{ fontSize:10, color:'#9ca3af' }}>Загрузить эталонное фото</div>
+              <div style={{ fontSize:10, color:'#9ca3af' }}>{photos.length > 0 ? `${photos.length} фото в данных блюда` : 'Загрузить эталонное фото'}</div>
             </div>
           </div>
+
+          {photos.length > 0 && (
+            <div>
+              <div style={{ fontSize:11, fontWeight:700, color:'#374151', textTransform:'uppercase', letterSpacing:.5, marginBottom:8 }}>🖼️ Фото из ТТК</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:8 }}>
+                {photos.map((src, i) => (
+                  <a key={i} href={src} target="_blank" rel="noreferrer" style={{ color:'#2563eb', fontSize:11, wordBreak:'break-word' }}>{src}</a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Tech errors */}
           {errs.length > 0 && (
