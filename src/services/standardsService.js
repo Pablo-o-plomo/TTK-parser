@@ -165,3 +165,75 @@ export function calculateNetworkAnalytics({ dishes = [], tasks = [], uploads = [
     }, 0) / tasks.length / 86400000)) : 0,
   }
 }
+
+export const restaurantProfiles = {
+  Петровка: { city: 'Москва', responsible: 'Анна Петрова · бренд-шеф', chef: 'шеф-повар Петровки' },
+  Ростов: { city: 'Ростов-на-Дону', responsible: 'Иван Ростовцев · шеф-повар', chef: 'су-шеф Ростов' },
+  Сочи: { city: 'Сочи', responsible: 'Мария Сочи · шеф-повар', chef: 'су-шеф Сочи' },
+  Краснодар: { city: 'Краснодар', responsible: 'Алексей Кубань · шеф-повар', chef: 'су-шеф Краснодар' },
+  Авиапарк: { city: 'Москва', responsible: 'Елена Авиа · шеф-повар', chef: 'су-шеф Авиапарк' },
+}
+
+export function getRestaurantStatus(metrics) {
+  if (!metrics.dishesCount) return { id: 'no_data', label: 'Нет данных', color: '#94a3b8', bg: '#f8fafc', icon: '⚪' }
+  if (metrics.overdueTasks > 0 || metrics.differencesCount > Math.max(10, metrics.dishesCount * 0.2)) return { id: 'critical', label: 'Много ошибок', color: '#dc2626', bg: '#fef2f2', icon: '🔴' }
+  if (metrics.activeTasks > 0 || metrics.differencesCount > 0 || metrics.withoutPhotos > 0 || metrics.withoutPdf > 0) return { id: 'attention', label: 'Есть задачи', color: '#d97706', bg: '#fffbeb', icon: '🟡' }
+  return { id: 'ok', label: 'Всё в порядке', color: '#16a34a', bg: '#f0fdf4', icon: '🟢' }
+}
+
+export function buildRestaurantCrmCards({ dishes = [], tasks = [], uploads = [], referenceRestaurant = 'Петровка', manualLinks = [] }) {
+  const groups = buildDishGroups(dishes, manualLinks)
+  const now = Date.now()
+
+  return NETWORK_RESTAURANTS.map(restaurant => {
+    const restaurantDishes = dishes.filter(dish => dish.restaurant === restaurant)
+    const restaurantTasks = tasks.filter(task => task.restaurant === restaurant)
+    const activeTasks = restaurantTasks.filter(task => ![APPROVAL_STATUS.APPROVED, APPROVAL_STATUS.CLOSED].includes(task.status)).length
+    const overdueTasks = restaurantTasks.filter(task => task.dueDate && new Date(task.dueDate).getTime() < now && ![APPROVAL_STATUS.APPROVED, APPROVAL_STATUS.CLOSED].includes(task.status)).length
+    const confirmed = restaurantTasks.filter(task => [APPROVAL_STATUS.APPROVED, APPROVAL_STATUS.CLOSED].includes(task.status)).length
+    const withoutPhotos = restaurantDishes.filter(dish => (dish.photos?.length || 0) === 0).length
+    const withoutPdf = restaurantDishes.filter(dish => (dish.pdfDocuments?.length || 0) === 0 && dish.sourceType !== SOURCE_TYPES.PDF).length
+    const withoutTechnology = restaurantDishes.filter(dish => !dish.technology).length
+    const differencesCount = groups.filter(group => {
+      const rows = getComparisonRows({ group, referenceRestaurant, tasks })
+      const row = rows.find(item => item.restaurant === restaurant)
+      return row && (row.status === 'no_data' || row.status === APPROVAL_STATUS.HAS_DIFFERENCES)
+    }).length
+    const lastUpload = uploads.filter(upload => upload.restaurant === restaurant).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]
+    const readinessBase = restaurantDishes.length || groups.length || 1
+    const penalty = differencesCount + withoutPhotos * 0.35 + withoutPdf * 0.25 + overdueTasks * 4 + activeTasks * 0.5
+    const readiness = restaurantDishes.length ? Math.max(0, Math.min(100, Math.round(100 - penalty / readinessBase * 100))) : 0
+    const metrics = {
+      restaurant,
+      ...restaurantProfiles[restaurant],
+      dishes: restaurantDishes,
+      dishesCount: restaurantDishes.length,
+      confirmedTtk: confirmed,
+      differencesCount,
+      withoutPhotos,
+      withoutPdf,
+      withoutTechnology,
+      activeTasks,
+      overdueTasks,
+      readiness,
+      lastUploadDate: lastUpload?.createdAt || null,
+      lastUpload,
+      tasks: restaurantTasks,
+      uploads: uploads.filter(upload => upload.restaurant === restaurant),
+    }
+    return { ...metrics, status: getRestaurantStatus(metrics) }
+  })
+}
+
+export function sortRestaurants(cards, sortBy) {
+  const sorted = [...cards]
+  const getTime = card => card.lastUploadDate ? new Date(card.lastUploadDate).getTime() : 0
+  const sorters = {
+    readiness: (a, b) => b.readiness - a.readiness,
+    errors: (a, b) => b.differencesCount - a.differencesCount,
+    overdue: (a, b) => b.overdueTasks - a.overdueTasks,
+    tasks: (a, b) => b.activeTasks - a.activeTasks,
+    lastUpload: (a, b) => getTime(b) - getTime(a),
+  }
+  return sorted.sort(sorters[sortBy] || sorters.readiness)
+}

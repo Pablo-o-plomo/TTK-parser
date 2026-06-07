@@ -16,6 +16,7 @@ import { NAV_ITEMS } from './constants.js'
 import { NETWORK_RESTAURANTS } from './domain/workflow.js'
 
 import Dashboard   from './pages/Dashboard.jsx'
+import Network     from './pages/Network.jsx'
 import Dishes      from './pages/Dishes.jsx'
 import Comparison  from './pages/Comparison.jsx'
 import ReviewTasks from './pages/ReviewTasks.jsx'
@@ -29,10 +30,13 @@ import Attestation from './pages/Attestation.jsx'
 
 const NAV_ICONS = {
   dashboard:   GridIcon,
+  network:     FireIcon,
   dishes:      BookIcon,
   comparison:  ClipIcon,
   review:      GraduationIcon,
   uploads:     ClipIcon,
+  analytics:   GridIcon,
+  settings:    GraduationIcon,
   pf:          BowlIcon,
   stations:    FireIcon,
   photos:      CameraIcon,
@@ -160,7 +164,8 @@ export default function App() {
 
         {/* Content */}
         <div style={{ padding:'22px 26px' }}>
-          {section === 'dashboard'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} uploads={uploads} go={setSection} />}
+          {section === 'dashboard'   && <Network     dishes={dishes} tasks={tasks} uploads={uploads} referenceRestaurant={referenceRestaurant} createTask={createTask} />}
+          {section === 'network'     && <Network     dishes={dishes} tasks={tasks} uploads={uploads} referenceRestaurant={referenceRestaurant} createTask={createTask} />}
           {section === 'dishes'      && <Dishes       dishes={visibleDishes} allDishes={dishes} selectedRestaurant={selectedRestaurant} />}
           {section === 'comparison'  && <Comparison   dishes={dishes} tasks={tasks} manualLinks={manualLinks} addManualLink={addManualLink} createTask={createTask} referenceRestaurant={referenceRestaurant} setReferenceRestaurant={setReferenceRestaurant} />}
           {section === 'review'      && <ReviewTasks  tasks={tasks} updateTaskStatus={updateTaskStatus} />}
@@ -169,7 +174,8 @@ export default function App() {
           {section === 'stations'    && <Stations     dishes={visibleDishes} />}
           {section === 'photos'      && <Photos       dishes={visibleDishes} />}
           {section === 'audit'       && <Audit        dishes={visibleDishes} disc={disc} />}
-          {section === 'attestation' && <Attestation />}
+          {section === 'analytics'   && <Dashboard   dishes={visibleDishes} pf={pf} tasks={tasks} uploads={uploads} go={setSection} />}
+          {section === 'settings'    && <Attestation />}
         </div>
       </div>
     </div>
