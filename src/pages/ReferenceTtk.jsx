@@ -195,6 +195,179 @@ function textOrDash(value) {
   return value && String(value).trim() ? value : '—'
 }
 
+function getEnvValue(key) {
+  return import.meta.env?.[key]
+}
+
+function hasText(value) {
+  return Boolean(String(value || '').trim())
+}
+
+function getFilledRows(rows = []) {
+  return rows
+    .map(normalizeRow)
+    .filter(row => hasText(row.name))
+}
+
+function makeAiDishPayload(ttk) {
+  const normalized = normalizeTtk(ttk)
+
+  return {
+    title: normalized.title || '',
+    output: normalized.output || '',
+    assemblyTime: normalized.assemblyTime || normalized.time || '',
+    category: normalized.category || '',
+    plate: normalized.plate || '',
+    rows: getFilledRows(normalized.rows).map(row => ({
+      name: row.name,
+      type: getTypeBadge(row.type).label,
+      qty: row.qty || '',
+    })),
+  }
+}
+
+function makeAiPrompt(dish) {
+  const rowsText = dish.rows
+    .map(row => `- ${row.name} | ${row.type} | ${row.qty || '—'}`)
+    .join('\n')
+
+  return `Ты — технолог ресторанной сети и бренд-шеф.
+На основе данных ТТК составь профессиональный текст для карточки блюда.
+
+Правила:
+- Пиши на русском языке.
+- Стиль: коротко, профессионально, понятно для повара.
+- Не добавляй ингредиенты, которых нет в составе.
+- Не меняй граммовки.
+- Если ингредиент имеет тип "П/Ф", считай его готовым полуфабрикатом.
+- Описывай именно сборку и подачу блюда на кухне.
+- Не используй художественные длинные описания.
+- Не придумывай лишние технологические процессы.
+- Верни только JSON без markdown.
+
+Формат ответа:
+{
+  "cookingMethod": "текст способа приготовления",
+  "dishStandard": "текст стандарта блюда",
+  "serving": "текст подачи"
+}
+
+Данные блюда:
+Название: ${dish.title || '—'}
+Выход: ${dish.output || '—'}
+Время сборки: ${dish.assemblyTime || '—'}
+Категория: ${dish.category || '—'}
+Посуда: ${dish.plate || '—'}
+Состав:
+${rowsText}`
+}
+
+function extractJsonObject(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+
+  const text = String(value).trim()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+function normalizeAiResponse(payload) {
+  const parsed = extractJsonObject(payload?.output_text || payload?.text || payload)
+  const candidate = parsed?.cookingMethod || parsed?.dishStandard || parsed?.serving
+    ? parsed
+    : extractJsonObject(parsed?.choices?.[0]?.message?.content || parsed?.output?.[0]?.content?.[0]?.text)
+
+  if (!candidate) return null
+
+  const result = {
+    cookingMethod: String(candidate.cookingMethod || '').trim(),
+    dishStandard: String(candidate.dishStandard || '').trim(),
+    serving: String(candidate.serving || '').trim(),
+  }
+
+  return result.cookingMethod && result.dishStandard && result.serving ? result : null
+}
+
+function makeLocalAiDraft(dish) {
+  const rows = dish.rows.map(row => `${row.name}${row.qty ? ` (${row.qty})` : ''}`)
+  const firstRow = rows[0] || 'подготовленные компоненты'
+  const restRows = rows.slice(1)
+
+  return {
+    cookingMethod: [
+      'Проверить готовность всех компонентов по составу ТТК.',
+      `В ${dish.plate || 'посуду подачи'} выложить ${firstRow}.`,
+      restRows.length ? `Добавить ${restRows.join(', ')} согласно указанным граммовкам.` : '',
+      'Собрать блюдо аккуратно, не меняя состав и выход.',
+    ].filter(Boolean).join('\n'),
+    dishStandard: [
+      'Все компоненты соответствуют составу ТТК и подготовлены к сборке.',
+      'Граммовки соблюдены, лишние ингредиенты не добавлены.',
+      'Блюдо имеет аккуратный внешний вид, без загрязнений по борту посуды.',
+      dish.assemblyTime ? `Сборка выполняется в пределах ${dish.assemblyTime}.` : '',
+    ].filter(Boolean).join('\n'),
+    serving: [
+      `Подавать в ${dish.plate || 'указанной посуде'} сразу после сборки.`,
+      'Компоненты расположить аккуратно, сохранить чистый край посуды.',
+      'Перед отдачей проверить выход, внешний вид и соответствие стандарту блюда.',
+    ].join('\n'),
+  }
+}
+
+async function requestReferenceTtkAi(dish) {
+  const prompt = makeAiPrompt(dish)
+  const endpoint = getEnvValue('VITE_REFERENCE_TTK_AI_ENDPOINT')
+  const apiKey = getEnvValue('VITE_OPENAI_API_KEY')
+  const model = getEnvValue('VITE_OPENAI_MODEL') || 'gpt-4o-mini'
+
+  if (endpoint) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, dish }),
+    })
+
+    if (!response.ok) throw new Error('AI endpoint unavailable')
+    const json = await response.json()
+    const result = normalizeAiResponse(json)
+    if (!result) throw new Error('Invalid AI response')
+    return result
+  }
+
+  if (apiKey) {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: prompt,
+        text: { format: { type: 'json_object' } },
+      }),
+    })
+
+    if (!response.ok) throw new Error('OpenAI unavailable')
+    const json = await response.json()
+    const result = normalizeAiResponse(json)
+    if (!result) throw new Error('Invalid AI response')
+    return result
+  }
+
+  return makeLocalAiDraft(dish)
+}
+
 function makePrintableHtml(sourceTtk) {
   const ttk = normalizeTtk(sourceTtk)
   const rows = ttk.rows?.length ? ttk.rows : [EMPTY_ROW]
@@ -563,6 +736,9 @@ function inferType(item) {
 
 export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatureItem, onCancel, onSave }) {
   const [form, setForm] = useState(() => normalizeTtk(initial || createEmptyReferenceTtk()))
+  const [aiStatus, setAiStatus] = useState('idle')
+  const [aiMessage, setAiMessage] = useState('')
+  const [showAiReplaceConfirm, setShowAiReplaceConfirm] = useState(false)
 
   const nomenclatureByName = useMemo(() => {
     return new Map(
@@ -618,6 +794,52 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     })
   }
 
+  function hasFilledAiTextBlocks() {
+    return hasText(form.technology) || hasText(form.standard) || hasText(form.serving)
+  }
+
+  async function fillTextBlocksWithAi() {
+    const dish = makeAiDishPayload(form)
+
+    if (dish.rows.length === 0) {
+      setAiStatus('error')
+      setAiMessage('Добавьте состав блюда перед генерацией')
+      return
+    }
+
+    setAiStatus('loading')
+    setAiMessage('')
+    setShowAiReplaceConfirm(false)
+
+    try {
+      const aiText = await requestReferenceTtkAi(dish)
+      if (!aiText) throw new Error('Invalid AI response')
+
+      setForm(current => ({
+        ...current,
+        technology: aiText.cookingMethod,
+        standard: aiText.dishStandard,
+        serving: aiText.serving,
+      }))
+      setAiStatus('success')
+      setAiMessage('Текстовые блоки заполнены. Их можно отредактировать вручную.')
+    } catch {
+      setAiStatus('error')
+      setAiMessage('Не удалось заполнить ТТК с AI')
+    }
+  }
+
+  function handleAiFillClick() {
+    setAiMessage('')
+
+    if (hasFilledAiTextBlocks()) {
+      setShowAiReplaceConfirm(true)
+      return
+    }
+
+    fillTextBlocksWithAi()
+  }
+
   function saveForm() {
     onSave(normalizeTtk(form))
   }
@@ -629,11 +851,36 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
           <h1 style={{ margin: '0 0 8px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
           <div style={{ color: '#64748b', fontSize: 14 }}>Фото, состав блюда, описание, способ приготовления, стандарт блюда и подача. Без брутто/нетто.</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={handleAiFillClick} disabled={aiStatus === 'loading'} style={{ ...PRIMARY, opacity: aiStatus === 'loading' ? .72 : 1 }}>
+            {aiStatus === 'loading' ? 'Заполняю…' : '✨ Заполнить с AI'}
+          </button>
           <button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button>
           <button type="submit" style={PRIMARY}>Сохранить</button>
         </div>
       </div>
+
+      {(showAiReplaceConfirm || aiMessage) && (
+        <section style={{
+          ...SECTION,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          borderColor: showAiReplaceConfirm ? '#fde68a' : aiStatus === 'error' ? '#fecaca' : '#bbf7d0',
+          background: showAiReplaceConfirm ? '#fffbeb' : aiStatus === 'error' ? '#fef2f2' : '#f0fdf4',
+        }}>
+          <div style={{ color: showAiReplaceConfirm ? '#92400e' : aiStatus === 'error' ? '#b91c1c' : '#166534', fontWeight: 800 }}>
+            {showAiReplaceConfirm ? 'Текстовые блоки уже заполнены. Заменить их текстом от AI?' : aiMessage}
+          </div>
+          {showAiReplaceConfirm && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={fillTextBlocksWithAi} style={PRIMARY}>Заменить</button>
+              <button type="button" onClick={() => setShowAiReplaceConfirm(false)} style={SEL_ST}>Отмена</button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section style={SECTION}>
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Основное</h2>
