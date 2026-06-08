@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
 import { NOMENCLATURE_TYPE_LABELS } from '../hooks/useNomenclature.js'
@@ -354,12 +354,12 @@ function makePrintableHtml(sourceTtk) {
   @page{size:A4;margin:0}
   *{box-sizing:border-box}
   body{margin:0;background:#f4efe7;font-family:Inter,Manrope,Arial,Helvetica,sans-serif;color:#1f2937}
-  .page{width:210mm;min-height:297mm;margin:0 auto;background:#faf8f5;padding:16mm;display:flex;flex-direction:column;gap:7mm;position:relative;overflow:hidden}
+  .page{width:210mm;min-height:297mm;margin:0 auto;background:#faf8f5;padding:10mm;display:flex;flex-direction:column;gap:4mm;position:relative;overflow:hidden}
   .page:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 10% 12%,rgba(22,51,43,.06),transparent 25%),radial-gradient(circle at 88% 4%,rgba(185,145,80,.08),transparent 22%);pointer-events:none}
-  .content{position:relative;z-index:1;display:flex;flex-direction:column;gap:7mm}
+  .content{position:relative;z-index:1;display:flex;flex-direction:column;gap:4mm}
   .kicker{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#7a6f62;font-weight:800;text-align:center}
-  h1{margin:0;text-align:center;font-size:30px;line-height:1.08;color:#16332b;letter-spacing:-.03em;font-weight:900}
-  .photo-wrap{width:100%;height:104mm;overflow:hidden;border-radius:24px;box-shadow:0 16px 42px rgba(31,41,55,.14);background:#eee7dc}
+  h1{margin:0;text-align:center;font-size:25px;line-height:1.08;color:#16332b;letter-spacing:-.03em;font-weight:900}
+  .photo-wrap{width:100%;height:78mm;overflow:hidden;border-radius:24px;box-shadow:0 16px 42px rgba(31,41,55,.14);background:#eee7dc}
   .dish-photo{width:100%;height:100%;object-fit:cover;display:block}
   .photo-placeholder{height:100%;display:flex;align-items:center;justify-content:center;color:#8b8174;font-size:18px;background:#eee7dc}
   .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -367,10 +367,10 @@ function makePrintableHtml(sourceTtk) {
   .meta-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#8b8174;font-weight:800;margin-bottom:4px}
   .meta-value{font-size:14px;color:#1f2937;font-weight:900}
   .grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:12px;align-items:start}
-  .block{background:#fff;border:1px solid #ece8df;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(31,41,55,.045)}
-  h2{margin:0 0 12px;font-size:17px;color:#16332b;letter-spacing:-.01em}
-  .text{font-size:13.5px;line-height:1.65;color:#374151;white-space:pre-wrap}
-  table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.8px;line-height:1.3}
+  .block{background:#fff;border:1px solid #ece8df;border-radius:20px;padding:10px;box-shadow:0 8px 24px rgba(31,41,55,.045)}
+  h2{margin:0 0 12px;font-size:14px;color:#16332b;letter-spacing:-.01em}
+  .text{font-size:11.5px;line-height:1.65;color:#374151;white-space:pre-wrap}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;line-height:1.3}
   th{padding:9px 8px;background:#f8f6f2;border-bottom:1px solid #ebe7de;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8b8174}
   td{padding:10px 8px;border-bottom:1px solid #f0ede6;vertical-align:middle;word-break:break-word;color:#1f2937}
   th:nth-child(1),td:nth-child(1){width:58%;font-weight:800}
@@ -564,7 +564,7 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', gap: 18, alignItems: 'start' }}>
-        <aside style={{ ...SECTION, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <aside style={{ ...SECTION, padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <div>
               <h2 style={{ margin: 0, color: '#16332b', fontSize: 18 }}>Папки</h2>
@@ -751,7 +751,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
   }
 
   function hasFilledAiTextBlocks() {
-    return hasText(form.cookingMethod) || hasText(form.dishStandard) || hasText(form.serving)
+    return hasText(form.description) || hasText(form.cookingMethod) || hasText(form.dishStandard) || hasText(form.serving)
   }
 
   async function fillTextBlocksWithAi() {
@@ -804,7 +804,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     <form onSubmit={e => { e.preventDefault(); saveForm() }} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#faf8f5' }}>
         <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
+          <h1 style={{ margin: '0 0 8px', fontSize: 25, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
           <div style={{ color: '#64748b', fontSize: 14 }}>Фото, состав блюда, описание, способ приготовления, стандарт блюда и подача. Без брутто/нетто.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -843,7 +843,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 180px', gap: 12 }}>
           <TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} />
           <TextField label="Выход" value={form.yield} onChange={v => update('yield', v)} placeholder="287 г" />
-          <TextField label="Время сборки" value={form.assemblyTime || form.time || ''} onChange={v => update('assemblyTime', v)} placeholder="2 мин" />
+          <TextField label="Время сборки" value={form.assemblyTime || form.time || ''} onChange={v => update('assemblyTime', v)} placeholder="8 мин" />
           <TextField label="Категория" value={form.category} onChange={v => update('category', v)} placeholder="Салаты" />
           <TextField label="Посуда" value={form.dishware} onChange={v => update('dishware', v)} placeholder="Тарелка 28 см" />
           <label style={FIELD}>
@@ -1012,7 +1012,7 @@ export function ReferenceTtkView({ ttk: rawTtk, onBack, onEdit, onDuplicate, onD
         <div>
           <button onClick={onBack} style={{ ...SEL_ST, marginBottom: 12 }}>← Карточки блюд</button>
           <div><TtkStatus status={ttk.status} /></div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
+          <h1 style={{ margin: '10px 0 6px', fontSize: 25, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
           <div style={{ color: '#64748b' }}>
             Выход: {ttk.yield || ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
           </div>
@@ -1041,7 +1041,7 @@ function PrintablePage({ ttk: rawTtk }) {
       <div style={PRINT_BG_1} />
       <div style={PRINT_BG_2} />
 
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '7mm' }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '4mm' }}>
         <div style={{ textAlign: 'center', fontSize: 10, letterSpacing: '.22em', textTransform: 'uppercase', color: '#7a6f62', fontWeight: 800 }}>
           Клёво · стандарт блюда
         </div>
@@ -1071,7 +1071,7 @@ function PrintablePage({ ttk: rawTtk }) {
           </PrintBlock>
 
           <PrintBlock title="Состав блюда">
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12.8, lineHeight: 1.3 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11, lineHeight: 1.3 }}>
               <thead>
                 <tr>
                   <th style={{ ...PRINT_TH, width: '58%' }}>Наименование</th>
@@ -1138,10 +1138,10 @@ const PRINT_PAGE = {
   minHeight: '297mm',
   background: '#faf8f5',
   boxShadow: '0 24px 70px rgba(15,23,42,.16)',
-  padding: '16mm',
+  padding: '10mm',
   display: 'flex',
   flexDirection: 'column',
-  gap: '7mm',
+  gap: '4mm',
   position: 'relative',
   overflow: 'hidden',
   fontFamily: 'Inter, Manrope, Arial, sans-serif',
@@ -1170,7 +1170,7 @@ const PRINT_BG_2 = {
 const PRINT_TITLE = {
   margin: 0,
   textAlign: 'center',
-  fontSize: 30,
+  fontSize: 25,
   lineHeight: 1.08,
   color: '#16332b',
   letterSpacing: '-.03em',
@@ -1179,7 +1179,7 @@ const PRINT_TITLE = {
 
 const PRINT_PHOTO_WRAP = {
   width: '100%',
-  height: '104mm',
+  height: '78mm',
   border: 'none',
   borderRadius: 24,
   overflow: 'hidden',
@@ -1200,13 +1200,13 @@ const PRINT_BLOCK = {
   background: '#fff',
   border: '1px solid #ece8df',
   borderRadius: 20,
-  padding: 16,
+  padding: 10,
   boxShadow: '0 8px 24px rgba(31,41,55,.045)',
 }
 
 const PRINT_H2 = {
   margin: '0 0 12px',
-  fontSize: 17,
+  fontSize: 14,
   fontWeight: 800,
   color: '#16332b',
   letterSpacing: '-.01em',
@@ -1234,12 +1234,12 @@ const PRINT_TD = {
   borderTop: 'none',
   verticalAlign: 'middle',
   wordBreak: 'break-word',
-  fontSize: 12.8,
+  fontSize: 11,
   color: '#1f2937',
 }
 
 const PRINT_TEXT = {
-  fontSize: 13.5,
+  fontSize: 11.5,
   lineHeight: 1.65,
   color: '#374151',
   whiteSpace: 'pre-wrap',

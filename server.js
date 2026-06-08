@@ -106,6 +106,7 @@ function makePrompt(ttkData) {
 
 Формат ответа:
 {
+  "description": "краткое описание блюда",
   "cookingMethod": "текст",
   "dishStandard": "текст",
   "serving": "текст"
