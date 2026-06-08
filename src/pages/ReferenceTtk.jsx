@@ -810,11 +810,13 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     fillTextBlocksWithAi()
   }
 
-  function saveForm() {
-    onSave({
+function saveForm() {
+    const normalized = normalizeTtk({
       ...form,
       assemblyTime: normalizeAssemblyTime(form.assemblyTime || form.time || ''),
     })
+
+    onSave(normalized)
   }
 
   return (
