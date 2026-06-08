@@ -74,6 +74,61 @@ const PRIMARY = {
   borderRadius: 999,
 }
 
+
+const FOLDER_STORAGE_KEY = 'academy_reference_ttk_folders_v1'
+const DEFAULT_FOLDER_ID = 'all'
+const UNGROUPED_FOLDER_ID = 'ungrouped'
+
+const FOLDER_BUTTON = {
+  ...SEL_ST,
+  width: '100%',
+  justifyContent: 'space-between',
+  textAlign: 'left',
+  borderRadius: 14,
+  padding: '10px 12px',
+}
+
+function canUseLocalStorage() {
+  return typeof localStorage !== 'undefined'
+}
+
+function makeFolderId() {
+  return `folder_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeFolderState(rawState = {}) {
+  const folders = Array.isArray(rawState.folders)
+    ? rawState.folders
+        .filter(folder => folder?.id && folder?.name)
+        .map(folder => ({ id: String(folder.id), name: String(folder.name) }))
+    : []
+
+  const itemFolders = rawState.itemFolders && typeof rawState.itemFolders === 'object'
+    ? Object.fromEntries(
+        Object.entries(rawState.itemFolders)
+          .filter(([, folderId]) => folders.some(folder => folder.id === folderId))
+          .map(([itemId, folderId]) => [String(itemId), String(folderId)]),
+      )
+    : {}
+
+  return { folders, itemFolders }
+}
+
+function readFolderState() {
+  if (!canUseLocalStorage()) return { folders: [], itemFolders: {} }
+
+  try {
+    return normalizeFolderState(JSON.parse(localStorage.getItem(FOLDER_STORAGE_KEY) || '{}'))
+  } catch {
+    return { folders: [], itemFolders: {} }
+  }
+}
+
+function writeFolderState(state) {
+  if (!canUseLocalStorage()) return
+  localStorage.setItem(FOLDER_STORAGE_KEY, JSON.stringify(normalizeFolderState(state)))
+}
+
 const EMPTY_ROW = { name: '', type: 'product', qty: '', semifinished: '', description: '' }
 
 function formatDate(value) {
@@ -138,6 +193,179 @@ function getTypeBadge(type) {
 
 function textOrDash(value) {
   return value && String(value).trim() ? value : '—'
+}
+
+function getEnvValue(key) {
+  return import.meta.env?.[key]
+}
+
+function hasText(value) {
+  return Boolean(String(value || '').trim())
+}
+
+function getFilledRows(rows = []) {
+  return rows
+    .map(normalizeRow)
+    .filter(row => hasText(row.name))
+}
+
+function makeAiDishPayload(ttk) {
+  const normalized = normalizeTtk(ttk)
+
+  return {
+    title: normalized.title || '',
+    output: normalized.output || '',
+    assemblyTime: normalized.assemblyTime || normalized.time || '',
+    category: normalized.category || '',
+    plate: normalized.plate || '',
+    rows: getFilledRows(normalized.rows).map(row => ({
+      name: row.name,
+      type: getTypeBadge(row.type).label,
+      qty: row.qty || '',
+    })),
+  }
+}
+
+function makeAiPrompt(dish) {
+  const rowsText = dish.rows
+    .map(row => `- ${row.name} | ${row.type} | ${row.qty || '—'}`)
+    .join('\n')
+
+  return `Ты — технолог ресторанной сети и бренд-шеф.
+На основе данных ТТК составь профессиональный текст для карточки блюда.
+
+Правила:
+- Пиши на русском языке.
+- Стиль: коротко, профессионально, понятно для повара.
+- Не добавляй ингредиенты, которых нет в составе.
+- Не меняй граммовки.
+- Если ингредиент имеет тип "П/Ф", считай его готовым полуфабрикатом.
+- Описывай именно сборку и подачу блюда на кухне.
+- Не используй художественные длинные описания.
+- Не придумывай лишние технологические процессы.
+- Верни только JSON без markdown.
+
+Формат ответа:
+{
+  "cookingMethod": "текст способа приготовления",
+  "dishStandard": "текст стандарта блюда",
+  "serving": "текст подачи"
+}
+
+Данные блюда:
+Название: ${dish.title || '—'}
+Выход: ${dish.output || '—'}
+Время сборки: ${dish.assemblyTime || '—'}
+Категория: ${dish.category || '—'}
+Посуда: ${dish.plate || '—'}
+Состав:
+${rowsText}`
+}
+
+function extractJsonObject(value) {
+  if (!value) return null
+  if (typeof value === 'object') return value
+
+  const text = String(value).trim()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+
+    try {
+      return JSON.parse(match[0])
+    } catch {
+      return null
+    }
+  }
+}
+
+function normalizeAiResponse(payload) {
+  const parsed = extractJsonObject(payload?.output_text || payload?.text || payload)
+  const candidate = parsed?.cookingMethod || parsed?.dishStandard || parsed?.serving
+    ? parsed
+    : extractJsonObject(parsed?.choices?.[0]?.message?.content || parsed?.output?.[0]?.content?.[0]?.text)
+
+  if (!candidate) return null
+
+  const result = {
+    cookingMethod: String(candidate.cookingMethod || '').trim(),
+    dishStandard: String(candidate.dishStandard || '').trim(),
+    serving: String(candidate.serving || '').trim(),
+  }
+
+  return result.cookingMethod && result.dishStandard && result.serving ? result : null
+}
+
+function makeLocalAiDraft(dish) {
+  const rows = dish.rows.map(row => `${row.name}${row.qty ? ` (${row.qty})` : ''}`)
+  const firstRow = rows[0] || 'подготовленные компоненты'
+  const restRows = rows.slice(1)
+
+  return {
+    cookingMethod: [
+      'Проверить готовность всех компонентов по составу ТТК.',
+      `В ${dish.plate || 'посуду подачи'} выложить ${firstRow}.`,
+      restRows.length ? `Добавить ${restRows.join(', ')} согласно указанным граммовкам.` : '',
+      'Собрать блюдо аккуратно, не меняя состав и выход.',
+    ].filter(Boolean).join('\n'),
+    dishStandard: [
+      'Все компоненты соответствуют составу ТТК и подготовлены к сборке.',
+      'Граммовки соблюдены, лишние ингредиенты не добавлены.',
+      'Блюдо имеет аккуратный внешний вид, без загрязнений по борту посуды.',
+      dish.assemblyTime ? `Сборка выполняется в пределах ${dish.assemblyTime}.` : '',
+    ].filter(Boolean).join('\n'),
+    serving: [
+      `Подавать в ${dish.plate || 'указанной посуде'} сразу после сборки.`,
+      'Компоненты расположить аккуратно, сохранить чистый край посуды.',
+      'Перед отдачей проверить выход, внешний вид и соответствие стандарту блюда.',
+    ].join('\n'),
+  }
+}
+
+async function requestReferenceTtkAi(dish) {
+  const prompt = makeAiPrompt(dish)
+  const endpoint = getEnvValue('VITE_REFERENCE_TTK_AI_ENDPOINT')
+  const apiKey = getEnvValue('VITE_OPENAI_API_KEY')
+  const model = getEnvValue('VITE_OPENAI_MODEL') || 'gpt-4o-mini'
+
+  if (endpoint) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, dish }),
+    })
+
+    if (!response.ok) throw new Error('AI endpoint unavailable')
+    const json = await response.json()
+    const result = normalizeAiResponse(json)
+    if (!result) throw new Error('Invalid AI response')
+    return result
+  }
+
+  if (apiKey) {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: prompt,
+        text: { format: { type: 'json_object' } },
+      }),
+    })
+
+    if (!response.ok) throw new Error('OpenAI unavailable')
+    const json = await response.json()
+    const result = normalizeAiResponse(json)
+    if (!result) throw new Error('Invalid AI response')
+    return result
+  }
+
+  return makeLocalAiDraft(dish)
 }
 
 function makePrintableHtml(sourceTtk) {
@@ -274,6 +502,101 @@ function Photo({ file, label, large = false }) {
 }
 
 export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }) {
+  const [folderState, setFolderState] = useState(readFolderState)
+  const [selectedFolderId, setSelectedFolderId] = useState(DEFAULT_FOLDER_ID)
+
+  const folderCounts = useMemo(() => {
+    return items.reduce((counts, item) => {
+      const folderId = folderState.itemFolders[item.id] || UNGROUPED_FOLDER_ID
+      counts[folderId] = (counts[folderId] || 0) + 1
+      return counts
+    }, { [DEFAULT_FOLDER_ID]: items.length, [UNGROUPED_FOLDER_ID]: 0 })
+  }, [items, folderState.itemFolders])
+
+  const visibleItems = useMemo(() => {
+    if (selectedFolderId === DEFAULT_FOLDER_ID) return items
+
+    return items.filter(item => {
+      const folderId = folderState.itemFolders[item.id] || UNGROUPED_FOLDER_ID
+      return folderId === selectedFolderId
+    })
+  }, [items, folderState.itemFolders, selectedFolderId])
+
+  function saveFolderState(updater) {
+    setFolderState(current => {
+      const next = normalizeFolderState(typeof updater === 'function' ? updater(current) : updater)
+      writeFolderState(next)
+      return next
+    })
+  }
+
+  function createFolder() {
+    const name = window.prompt('Название папки для карточек ТТК')?.trim()
+    if (!name) return
+
+    const folder = { id: makeFolderId(), name }
+    saveFolderState(current => ({ ...current, folders: [...current.folders, folder] }))
+    setSelectedFolderId(folder.id)
+  }
+
+  function renameFolder(folder) {
+    const name = window.prompt('Новое название папки', folder.name)?.trim()
+    if (!name || name === folder.name) return
+
+    saveFolderState(current => ({
+      ...current,
+      folders: current.folders.map(item => item.id === folder.id ? { ...item, name } : item),
+    }))
+  }
+
+  function deleteFolder(folder) {
+    if (!window.confirm(`Удалить папку «${folder.name}»? Карточки останутся в разделе «Без папки».`)) return
+
+    saveFolderState(current => ({
+      folders: current.folders.filter(item => item.id !== folder.id),
+      itemFolders: Object.fromEntries(
+        Object.entries(current.itemFolders).filter(([, folderId]) => folderId !== folder.id),
+      ),
+    }))
+
+    if (selectedFolderId === folder.id) setSelectedFolderId(DEFAULT_FOLDER_ID)
+  }
+
+  function setItemFolder(itemId, folderId) {
+    saveFolderState(current => {
+      const itemFolders = { ...current.itemFolders }
+
+      if (!folderId) {
+        delete itemFolders[itemId]
+      } else {
+        itemFolders[itemId] = folderId
+      }
+
+      return { ...current, itemFolders }
+    })
+  }
+
+  function FolderButton({ id, name, count }) {
+    const active = selectedFolderId === id
+
+    return (
+      <button
+        type="button"
+        onClick={() => setSelectedFolderId(id)}
+        style={{
+          ...FOLDER_BUTTON,
+          background: active ? '#16332b' : '#fff',
+          borderColor: active ? '#16332b' : '#e5e1d8',
+          color: active ? '#fff' : '#334155',
+          fontWeight: active ? 900 : 800,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+        <span style={{ color: active ? 'rgba(255,255,255,.78)' : '#94a3b8', fontSize: 12 }}>{count || 0}</span>
+      </button>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#faf8f5' }}>
@@ -284,43 +607,92 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
         <button onClick={onCreate} style={PRIMARY}>Создать карточку</button>
       </div>
 
-      {items.length === 0 ? (
-        <div style={{ ...SECTION, textAlign: 'center', padding: 48 }}>
-          <div style={{ fontSize: 46 }}>📄</div>
-          <h2 style={{ margin: '8px 0', color: '#16332b' }}>Пока нет карточек блюд</h2>
-          <p style={{ color: '#64748b' }}>Создайте первую карточку: название, фото, состав блюда, способ приготовления и подача.</p>
-          <button onClick={onCreate} style={PRIMARY}>Создать первую карточку</button>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 18 }}>
-          {items.map(rawItem => {
-            const item = normalizeTtk(rawItem)
+      <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', gap: 18, alignItems: 'start' }}>
+        <aside style={{ ...SECTION, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div>
+              <h2 style={{ margin: 0, color: '#16332b', fontSize: 18 }}>Папки</h2>
+              <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>Группировка эталонных ТТК</div>
+            </div>
+            <button type="button" onClick={createFolder} style={{ ...SEL_ST, borderRadius: 999, fontWeight: 900 }}>+</button>
+          </div>
 
-            return (
-              <div key={item.id} style={{ ...SECTION, padding: 0, overflow: 'hidden', transition: '.25s' }}>
-                <div style={{ height: 190, background: '#f3efe7' }}>
-                  <Photo file={item.photo} label="Фото блюда" />
-                </div>
-                <div style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <h3 style={{ margin: '0 0 8px', fontSize: 19, color: '#16332b', letterSpacing: '-.02em' }}>{item.title || 'Без названия'}</h3>
-                    <TtkStatus status={item.status} />
+          <FolderButton id={DEFAULT_FOLDER_ID} name="Все карточки" count={folderCounts[DEFAULT_FOLDER_ID]} />
+          <FolderButton id={UNGROUPED_FOLDER_ID} name="Без папки" count={folderCounts[UNGROUPED_FOLDER_ID]} />
+
+          {folderState.folders.length > 0 && <div style={{ height: 1, background: '#f0ede6', margin: '2px 0' }} />}
+
+          {folderState.folders.map(folder => (
+            <div key={folder.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: 6, alignItems: 'center' }}>
+              <FolderButton id={folder.id} name={folder.name} count={folderCounts[folder.id]} />
+              <button type="button" onClick={() => renameFolder(folder)} title="Переименовать папку" style={{ ...SEL_ST, padding: '9px 10px' }}>✎</button>
+              <button type="button" onClick={() => deleteFolder(folder)} title="Удалить папку" style={{ ...SEL_ST, padding: '9px 10px', color: '#dc2626', borderColor: '#fecaca' }}>×</button>
+            </div>
+          ))}
+
+          {folderState.folders.length === 0 && (
+            <div style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5, padding: '4px 2px' }}>
+              Создайте папки для меню, цехов или категорий блюд — карточки можно будет разложить через список.
+            </div>
+          )}
+        </aside>
+
+        <div style={{ minWidth: 0 }}>
+          {items.length === 0 ? (
+            <div style={{ ...SECTION, textAlign: 'center', padding: 48 }}>
+              <div style={{ fontSize: 46 }}>📄</div>
+              <h2 style={{ margin: '8px 0', color: '#16332b' }}>Пока нет карточек блюд</h2>
+              <p style={{ color: '#64748b' }}>Создайте первую карточку: название, фото, состав блюда, способ приготовления и подача.</p>
+              <button onClick={onCreate} style={PRIMARY}>Создать первую карточку</button>
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div style={{ ...SECTION, textAlign: 'center', padding: 42 }}>
+              <div style={{ fontSize: 40 }}>🗂️</div>
+              <h2 style={{ margin: '8px 0', color: '#16332b' }}>В этой папке пока пусто</h2>
+              <p style={{ color: '#64748b' }}>Назначьте папку на карточке или выберите другой раздел слева.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 18 }}>
+              {visibleItems.map(rawItem => {
+                const item = normalizeTtk(rawItem)
+                const itemFolderId = folderState.itemFolders[item.id] || ''
+
+                return (
+                  <div key={item.id} style={{ ...SECTION, padding: 0, overflow: 'hidden', transition: '.25s' }}>
+                    <div style={{ height: 190, background: '#f3efe7' }}>
+                      <Photo file={item.photo} label="Фото блюда" />
+                    </div>
+                    <div style={{ padding: 18 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                        <h3 style={{ margin: '0 0 8px', fontSize: 19, color: '#16332b', letterSpacing: '-.02em' }}>{item.title || 'Без названия'}</h3>
+                        <TtkStatus status={item.status} />
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.7 }}>
+                        Выход: {item.output || '—'}<br />
+                        Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
+                      </div>
+                      <label style={{ ...FIELD, marginTop: 12 }}>
+                        <span style={{ fontSize: 11, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.06em' }}>Папка</span>
+                        <select value={itemFolderId} onChange={e => setItemFolder(item.id, e.target.value)} style={{ ...SEL_ST, width: '100%', borderRadius: 14 }}>
+                          <option value="">Без папки</option>
+                          {folderState.folders.map(folder => (
+                            <option key={folder.id} value={folder.id}>{folder.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
+                        <button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button>
+                        <button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button>
+                        <button onClick={() => onDownload(item)} style={SEL_ST}>Скачать JSON</button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.7 }}>
-                    Выход: {item.output || '—'}<br />
-                    Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
-                    <button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button>
-                    <button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button>
-                    <button onClick={() => onDownload(item)} style={SEL_ST}>Скачать JSON</button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+                )
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -364,6 +736,9 @@ function inferType(item) {
 
 export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatureItem, onCancel, onSave }) {
   const [form, setForm] = useState(() => normalizeTtk(initial || createEmptyReferenceTtk()))
+  const [aiStatus, setAiStatus] = useState('idle')
+  const [aiMessage, setAiMessage] = useState('')
+  const [showAiReplaceConfirm, setShowAiReplaceConfirm] = useState(false)
 
   const nomenclatureByName = useMemo(() => {
     return new Map(
@@ -419,6 +794,52 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     })
   }
 
+  function hasFilledAiTextBlocks() {
+    return hasText(form.technology) || hasText(form.standard) || hasText(form.serving)
+  }
+
+  async function fillTextBlocksWithAi() {
+    const dish = makeAiDishPayload(form)
+
+    if (dish.rows.length === 0) {
+      setAiStatus('error')
+      setAiMessage('Добавьте состав блюда перед генерацией')
+      return
+    }
+
+    setAiStatus('loading')
+    setAiMessage('')
+    setShowAiReplaceConfirm(false)
+
+    try {
+      const aiText = await requestReferenceTtkAi(dish)
+      if (!aiText) throw new Error('Invalid AI response')
+
+      setForm(current => ({
+        ...current,
+        technology: aiText.cookingMethod,
+        standard: aiText.dishStandard,
+        serving: aiText.serving,
+      }))
+      setAiStatus('success')
+      setAiMessage('Текстовые блоки заполнены. Их можно отредактировать вручную.')
+    } catch {
+      setAiStatus('error')
+      setAiMessage('Не удалось заполнить ТТК с AI')
+    }
+  }
+
+  function handleAiFillClick() {
+    setAiMessage('')
+
+    if (hasFilledAiTextBlocks()) {
+      setShowAiReplaceConfirm(true)
+      return
+    }
+
+    fillTextBlocksWithAi()
+  }
+
   function saveForm() {
     onSave(normalizeTtk(form))
   }
@@ -430,11 +851,36 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
           <h1 style={{ margin: '0 0 8px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
           <div style={{ color: '#64748b', fontSize: 14 }}>Фото, состав блюда, описание, способ приготовления, стандарт блюда и подача. Без брутто/нетто.</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={handleAiFillClick} disabled={aiStatus === 'loading'} style={{ ...PRIMARY, opacity: aiStatus === 'loading' ? .72 : 1 }}>
+            {aiStatus === 'loading' ? 'Заполняю…' : '✨ Заполнить с AI'}
+          </button>
           <button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button>
           <button type="submit" style={PRIMARY}>Сохранить</button>
         </div>
       </div>
+
+      {(showAiReplaceConfirm || aiMessage) && (
+        <section style={{
+          ...SECTION,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          borderColor: showAiReplaceConfirm ? '#fde68a' : aiStatus === 'error' ? '#fecaca' : '#bbf7d0',
+          background: showAiReplaceConfirm ? '#fffbeb' : aiStatus === 'error' ? '#fef2f2' : '#f0fdf4',
+        }}>
+          <div style={{ color: showAiReplaceConfirm ? '#92400e' : aiStatus === 'error' ? '#b91c1c' : '#166534', fontWeight: 800 }}>
+            {showAiReplaceConfirm ? 'Текстовые блоки уже заполнены. Заменить их текстом от AI?' : aiMessage}
+          </div>
+          {showAiReplaceConfirm && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={fillTextBlocksWithAi} style={PRIMARY}>Заменить</button>
+              <button type="button" onClick={() => setShowAiReplaceConfirm(false)} style={SEL_ST}>Отмена</button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section style={SECTION}>
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Основное</h2>
