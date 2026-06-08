@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 import { createEmptyReferenceTtk } from '../storage/referenceTtkStore.js'
 import { SEMIFINISHED_TYPE_LABELS } from '../storage/semifinishedStore.js'
-import { SYSTEM_UNGROUPED_GROUP_ID as UNGROUPED_GROUP_ID } from '../storage/ttkGroupsStore.js'
 
 const STATUS_LABELS = { draft: 'Черновик', in_progress: 'В работе', standard: 'Эталон' }
 const STATUS_COLORS = { draft: '#64748b', in_progress: '#d97706', standard: '#16a34a' }
@@ -15,6 +14,128 @@ const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
 const TEXTAREA = { width:'100%', boxSizing:'border-box', minHeight:96, border:'1.5px solid #e5e7eb', borderRadius:14, padding:12, fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }
 const PRIMARY = { ...SEL_ST, background:'#111827', borderColor:'#111827', color:'#fff', fontWeight:900, padding:'11px 16px' }
 const SOFT = { ...SEL_ST, borderColor:'rgba(15,23,42,.08)', background:'rgba(255,255,255,.8)' }
+
+const GROUPS_STORAGE_KEY = 'referenceTtkGroups'
+const ALL_GROUP_ID = 'all'
+const UNGROUPED_GROUP_ID = 'ungrouped'
+
+const DEFAULT_GROUPS = [
+  { id: ALL_GROUP_ID, parentId: null, title: '📚 Все карточки', order: 0, expanded: true, system: true },
+  { id: 'salads', parentId: null, title: 'Салаты', order: 10, expanded: true },
+  { id: 'snacks', parentId: null, title: 'Закуски', order: 20, expanded: true },
+  { id: 'hot', parentId: null, title: 'Горячие блюда', order: 30, expanded: true },
+  { id: 'rolls', parentId: null, title: 'Роллы', order: 40, expanded: true },
+  { id: 'soups', parentId: null, title: 'Супы', order: 50, expanded: true },
+  { id: 'sauces', parentId: null, title: 'Соусы', order: 60, expanded: true },
+  { id: 'semifinished', parentId: null, title: 'Полуфабрикаты', order: 70, expanded: true },
+  { id: 'prep', parentId: null, title: 'Заготовки', order: 80, expanded: true },
+  { id: 'desserts', parentId: null, title: 'Десерты', order: 90, expanded: true },
+  { id: 'drinks', parentId: null, title: 'Напитки', order: 100, expanded: true },
+  { id: UNGROUPED_GROUP_ID, parentId: null, title: 'Без группы', order: 100000, expanded: true, system: true },
+]
+
+function nowIso() {
+  return new Date().toISOString()
+}
+
+function normalizeGroup(group = {}) {
+  const system = group.id === ALL_GROUP_ID || group.id === UNGROUPED_GROUP_ID || group.system === true
+  const now = nowIso()
+  return {
+    id: group.id || makeId('group'),
+    parentId: system ? null : group.parentId || null,
+    title: group.id === ALL_GROUP_ID ? '📚 Все карточки' : group.id === UNGROUPED_GROUP_ID ? 'Без группы' : group.title || 'Новая группа',
+    order: Number.isFinite(Number(group.order)) ? Number(group.order) : Date.now(),
+    expanded: group.expanded !== false,
+    system,
+    createdAt: group.createdAt || now,
+    updatedAt: group.updatedAt || now,
+  }
+}
+
+function withSystemGroups(groups) {
+  const byId = new Map((Array.isArray(groups) ? groups : []).map(group => [group.id, normalizeGroup(group)]))
+  DEFAULT_GROUPS.forEach(group => {
+    if (!byId.has(group.id)) byId.set(group.id, normalizeGroup({ ...group, createdAt: nowIso(), updatedAt: nowIso() }))
+  })
+  return Array.from(byId.values()).sort((a, b) => Number(a.order) - Number(b.order) || a.title.localeCompare(b.title))
+}
+
+function readGroups() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(GROUPS_STORAGE_KEY) || 'null')
+    return withSystemGroups(parsed || DEFAULT_GROUPS)
+  } catch {
+    return withSystemGroups(DEFAULT_GROUPS)
+  }
+}
+
+function writeGroups(groups) {
+  localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(withSystemGroups(groups)))
+}
+
+function createsCycle(groups, groupId, parentId) {
+  if (!parentId || groupId !== parentId) {
+    let current = groups.find(group => group.id === parentId)
+    while (current) {
+      if (current.parentId === groupId) return true
+      current = groups.find(group => group.id === current.parentId)
+    }
+    return false
+  }
+  return true
+}
+
+function useReferenceTtkGroups() {
+  const [groups, setGroups] = useState(() => withSystemGroups(DEFAULT_GROUPS))
+
+  useEffect(() => setGroups(readGroups()), [])
+
+  const persist = useCallback(updater => {
+    setGroups(current => {
+      const next = withSystemGroups(typeof updater === 'function' ? updater(current) : updater)
+      writeGroups(next)
+      return next
+    })
+  }, [])
+
+  const createGroup = useCallback((parentId = null, title = 'Новая группа') => {
+    const now = nowIso()
+    const group = normalizeGroup({ id: makeId('group'), parentId, title, order: Date.now(), expanded: true, createdAt: now, updatedAt: now })
+    persist(current => [...current, group])
+    return group
+  }, [persist])
+
+  const updateGroup = useCallback((id, patch = {}) => {
+    persist(current => current.map(group => {
+      if (group.id !== id || group.system) return group
+      const nextParentId = patch.parentId !== undefined ? patch.parentId : group.parentId
+      return normalizeGroup({ ...group, ...patch, parentId: createsCycle(current, id, nextParentId) ? group.parentId : nextParentId, updatedAt: nowIso() })
+    }))
+  }, [persist])
+
+  const toggleExpanded = useCallback(id => {
+    persist(current => current.map(group => group.id === id ? { ...group, expanded: !group.expanded, updatedAt: nowIso() } : group))
+  }, [persist])
+
+  const moveGroup = useCallback((id, parentId = null, order = Date.now()) => {
+    updateGroup(id, { parentId, order })
+  }, [updateGroup])
+
+  const duplicateGroup = useCallback(id => {
+    const source = groups.find(group => group.id === id)
+    if (!source || source.system) return null
+    return createGroup(source.parentId, `${source.title} — копия`)
+  }, [createGroup, groups])
+
+  const deleteGroup = useCallback(id => {
+    persist(current => current
+      .filter(group => group.id !== id || group.system)
+      .map(group => group.parentId === id ? { ...group, parentId: null, updatedAt: nowIso() } : group))
+  }, [persist])
+
+  return { groups, createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, deleteGroup }
+}
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleDateString('ru-RU') : '—'
@@ -90,7 +211,7 @@ function getDescendantIds(groups, parentId) {
 }
 
 function countGroupCards(groups, cards, groupId) {
-  if (groupId === 'all') return cards.length
+  if (groupId === ALL_GROUP_ID) return cards.length
   const ids = new Set([groupId, ...getDescendantIds(groups, groupId)])
   return cards.filter(card => ids.has(card.groupId || UNGROUPED_GROUP_ID)).length
 }
@@ -145,7 +266,7 @@ function GroupContextMenu({ context, onClose, actions, onDeleteRequest }) {
   const askTitle = (label, initial = '') => window.prompt(label, initial)?.trim()
   return <div style={{ ...CONTEXT_MENU, left:x, top:y }} onMouseLeave={onClose}>
     <button style={CONTEXT_BTN} onClick={() => { actions.createGroup(null, askTitle('Название группы', 'Новая группа') || 'Новая группа'); onClose() }}>Создать группу</button>
-    <button style={CONTEXT_BTN} onClick={() => { actions.createGroup(group.id, askTitle('Название подгруппы', 'Новая подгруппа') || 'Новая подгруппа'); onClose() }}>Создать подгруппу</button>
+    <button disabled={!canEdit} style={CONTEXT_BTN} onClick={() => { actions.createGroup(group.id, askTitle('Название подгруппы', 'Новая подгруппа') || 'Новая подгруппа'); onClose() }}>Создать подгруппу</button>
     <button disabled={!canEdit} style={CONTEXT_BTN} onClick={() => { const title = askTitle('Новое название', group.title); if (title) actions.updateGroup(group.id, { title }); onClose() }}>Переименовать</button>
     <button disabled={!canEdit} style={CONTEXT_BTN} onClick={() => { const target = askTitle('ID родительской группы или пусто для корня', group.parentId || ''); actions.moveGroup(group.id, target || null); onClose() }}>Переместить</button>
     <button disabled={!canEdit} style={CONTEXT_BTN} onClick={() => { actions.duplicateGroup(group.id); onClose() }}>Дублировать</button>
@@ -153,7 +274,7 @@ function GroupContextMenu({ context, onClose, actions, onDeleteRequest }) {
   </div>
 }
 
-function TtkCard({ item, onOpen, onEdit, onPrint, onDeleteRequest, onMove, selectedGroupId }) {
+function TtkCard({ item, groups, onOpen, onEdit, onPrint, onDeleteRequest, onMove, selectedGroupId }) {
   return <article
     draggable
     onDragStart={e => e.dataTransfer.setData('ttkId', item.id)}
@@ -165,24 +286,26 @@ function TtkCard({ item, onOpen, onEdit, onPrint, onDeleteRequest, onMove, selec
     <div style={{ padding:16 }}>
       <div style={{ display:'flex', justifyContent:'space-between', gap:8, alignItems:'flex-start' }}><h3 style={{ margin:'0 0 8px', fontSize:17, lineHeight:1.25 }}>{item.title || 'Без названия'}</h3><StatusTag status={item.status} /></div>
       <div style={{ color:'#64748b', fontSize:12, lineHeight:1.7 }}>Выход: {item.output || '—'}<br />{item.category || 'Категория не указана'} · {formatDate(item.updatedAt)}</div>
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:14 }}><button onClick={() => onOpen(item)} style={SOFT}>Открыть</button><button onClick={() => onEdit(item)} style={SOFT}>Редактировать</button><button onClick={() => onPrint(item)} style={SOFT}>Печать</button><button onClick={() => onDeleteRequest(item)} style={{ ...SOFT, color:'#dc2626' }}>Удалить</button></div>
+      <Field label="Группа"><select value={item.groupId || UNGROUPED_GROUP_ID} onChange={e => onMove(item.id, e.target.value, Date.now())} style={{ ...SOFT, width:'100%', marginTop:12 }}>{groups.filter(group => group.id !== ALL_GROUP_ID).map(group => <option key={group.id} value={group.id}>{group.title}</option>)}</select></Field><div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:14 }}><button onClick={() => onOpen(item)} style={SOFT}>Открыть</button><button onClick={() => onEdit(item)} style={SOFT}>Редактировать</button><button onClick={() => onPrint(item)} style={SOFT}>Печать</button><button onClick={() => onDeleteRequest(item)} style={{ ...SOFT, color:'#dc2626' }}>Удалить</button></div>
     </div>
   </article>
 }
 
-export function ReferenceTtkList({ items, groups = [], groupActions, onOpen, onEdit, onCreate, onDelete, onPrint, onMoveTtk }) {
-  const [selectedGroupId, setSelectedGroupId] = useState('all')
+export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDelete, onPrint, onMoveTtk = () => {} }) {
+  const { groups, createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, deleteGroup: removeGroup } = useReferenceTtkGroups()
+  const groupActions = useMemo(() => ({ createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, deleteGroup: removeGroup }), [createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, removeGroup])
+  const [selectedGroupId, setSelectedGroupId] = useState(ALL_GROUP_ID)
   const [query, setQuery] = useState('')
   const [context, setContext] = useState(null)
   const [deleteCard, setDeleteCard] = useState(null)
   const [deleteGroup, setDeleteGroup] = useState(null)
   const [draggedGroupId, setDraggedGroupId] = useState(null)
 
-  const rootGroups = useMemo(() => getChildren(groups, null), [groups])
+  const rootGroups = useMemo(() => getChildren(groups, null).filter(group => group.id !== ALL_GROUP_ID), [groups])
   const visibleItems = useMemo(() => {
     const sorted = [...items].sort((a, b) => Number(a.order) - Number(b.order) || String(b.updatedAt).localeCompare(String(a.updatedAt)))
     if (query.trim()) return sorted.filter(item => matchesSearch(item, query))
-    if (selectedGroupId === 'all') return sorted
+    if (selectedGroupId === ALL_GROUP_ID) return sorted
     const ids = new Set([selectedGroupId, ...getDescendantIds(groups, selectedGroupId)])
     return sorted.filter(item => ids.has(item.groupId || UNGROUPED_GROUP_ID))
   }, [groups, items, query, selectedGroupId])
@@ -192,14 +315,14 @@ export function ReferenceTtkList({ items, groups = [], groupActions, onOpen, onE
     ;[deleteGroup.id, ...getDescendantIds(groups, deleteGroup.id)].forEach(groupId => onMoveTtk(null, groupId, null, { moveGroupCardsToUngrouped: true }))
     groupActions.deleteGroup(deleteGroup.id)
     setDeleteGroup(null)
-    setSelectedGroupId('all')
+    setSelectedGroupId(ALL_GROUP_ID)
   }
 
   return (
     <div style={KB_LAYOUT}>
       <aside style={KB_SIDEBAR}>
         <div style={{ marginBottom:18 }}><h2 style={{ margin:'0 0 6px', fontSize:18 }}>База знаний</h2><p style={{ margin:0, color:'#94a3b8', fontSize:12 }}>Древовидная структура эталонных карт</p></div>
-        <button onClick={() => setSelectedGroupId('all')} style={{ ...TREE_ROW, width:'100%', background:selectedGroupId === 'all' ? '#111827' : '#fff', color:selectedGroupId === 'all' ? '#fff' : '#334155' }}><span>📚 Все карточки</span><span style={{ ...COUNT_BADGE, marginLeft:'auto' }}>{items.length}</span></button>
+        <button onClick={() => setSelectedGroupId(ALL_GROUP_ID)} style={{ ...TREE_ROW, width:'100%', background:selectedGroupId === ALL_GROUP_ID ? '#111827' : '#fff', color:selectedGroupId === ALL_GROUP_ID ? '#fff' : '#334155' }}><span>📚 Все карточки</span><span style={{ ...COUNT_BADGE, marginLeft:'auto' }}>{items.length}</span></button>
         <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (draggedGroupId) groupActions.moveGroup(draggedGroupId, null) }}>
           {rootGroups.map(group => <GroupTreeNode key={group.id} group={group} groups={groups} cards={items} selectedGroupId={selectedGroupId} onSelect={setSelectedGroupId} actions={groupActions} onContext={(e, g) => setContext({ x:e.clientX, y:e.clientY, group:g })} draggedGroupId={draggedGroupId} setDraggedGroupId={setDraggedGroupId} />)}
         </div>
@@ -210,18 +333,19 @@ export function ReferenceTtkList({ items, groups = [], groupActions, onOpen, onE
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:16, marginBottom:14 }}><div><h1 style={{ margin:'0 0 6px', fontSize:30 }}>🍽 Эталонные ТТК</h1><div style={{ color:'#64748b' }}>Современная древовидная база знаний для 1000+ технологических карт.</div></div><button onClick={onCreate} style={PRIMARY}>Создать ТТК</button></div>
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Глобальный поиск по названию, описанию, ингредиентам и технологии" style={{ ...INPUT, padding:14, borderRadius:18, background:'#f8fafc' }} />
         </section>
-        <section onDragOver={e => e.preventDefault()} onDrop={e => { const ttkId = e.dataTransfer.getData('ttkId'); if (ttkId && selectedGroupId !== 'all') onMoveTtk(ttkId, selectedGroupId, Date.now()) }}>
-          {visibleItems.length === 0 ? <div style={{ ...SECTION, textAlign:'center', padding:56, color:'#94a3b8' }}>В этой группе пока нет карточек</div> : <div style={GRID_STYLE}>{visibleItems.map(item => <TtkCard key={item.id} item={item} selectedGroupId={selectedGroupId} onOpen={onOpen} onEdit={onEdit} onPrint={onPrint} onDeleteRequest={setDeleteCard} onMove={(id, groupId, order) => onMoveTtk(id, groupId === 'all' ? (items.find(card => card.id === id)?.groupId || UNGROUPED_GROUP_ID) : groupId, order)} />)}</div>}
+        <section onDragOver={e => e.preventDefault()} onDrop={e => { const ttkId = e.dataTransfer.getData('ttkId'); if (ttkId && selectedGroupId !== ALL_GROUP_ID) onMoveTtk(ttkId, selectedGroupId, Date.now()) }}>
+          {visibleItems.length === 0 ? <div style={{ ...SECTION, textAlign:'center', padding:56, color:'#94a3b8' }}>В этой группе пока нет карточек</div> : <div style={GRID_STYLE}>{visibleItems.map(item => <TtkCard key={item.id} item={item} groups={groups} selectedGroupId={selectedGroupId} onOpen={onOpen} onEdit={onEdit} onPrint={onPrint} onDeleteRequest={setDeleteCard} onMove={(id, groupId, order) => onMoveTtk(id, groupId === ALL_GROUP_ID ? (items.find(card => card.id === id)?.groupId || UNGROUPED_GROUP_ID) : groupId, order)} />)}</div>}
         </section>
       </main>
       <GroupContextMenu context={context} onClose={() => setContext(null)} actions={groupActions} onDeleteRequest={setDeleteGroup} />
       {deleteCard && <ConfirmDeleteModal title="Удалить карточку ТТК?" details="Карточка будет удалена только после подтверждения. Это действие нельзя отменить." onCancel={() => setDeleteCard(null)} onConfirm={() => { onDelete(deleteCard.id); setDeleteCard(null) }} />}
-      {deleteGroup && <ConfirmDeleteModal title="Вы действительно хотите удалить группу?" details="Карточки не будут удалены.\nОни автоматически будут перенесены в системную группу «Без группы»." onCancel={() => setDeleteGroup(null)} onConfirm={confirmGroupDelete} />}
+      {deleteGroup && <ConfirmDeleteModal title="Вы действительно хотите удалить группу?" details="Карточки и подгруппы не будут удалены. Они будут перенесены в «Без группы»." onCancel={() => setDeleteGroup(null)} onConfirm={confirmGroupDelete} />}
     </div>
   )
 }
 
-export function ReferenceTtkForm({ initial, nomenclature = [], groups = [], onCancel, onSave }) {
+export function ReferenceTtkForm({ initial, nomenclature = [], onCancel, onSave }) {
+  const { groups } = useReferenceTtkGroups()
   const [form, setForm] = useState(() => initial || createEmptyReferenceTtk())
   const searchItems = useMemo(() => nomenclature.filter(item => ['product', 'semifinished', 'sauce', 'prep'].includes(item.type)), [nomenclature])
   const byName = useMemo(() => new Map(searchItems.map(item => [item.name.trim().toLowerCase(), item])), [searchItems])
@@ -238,7 +362,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], groups = [], onCa
 
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ display:'grid', gap:16 }}>
-      <section style={SECTION}><h2 style={{ marginTop:0 }}>Основное</h2><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:12 }}><TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} /><TextField label="Код ТТК" value={form.ttkCode} onChange={v => update('ttkCode', v)} /><TextField label="Категория" value={form.category} onChange={v => update('category', v)} /><TextField label="Цех" value={form.station} onChange={v => update('station', v)} /><TextField label="Выход" value={form.output} onChange={v => update('output', v)} /><Field label="Статус"><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="in_progress">В работе</option><option value="standard">Эталон</option></select></Field><Field label="Группа"><select value={form.groupId || UNGROUPED_GROUP_ID} onChange={e => update('groupId', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{groups.map(group => <option key={group.id} value={group.id}>{group.title}</option>)}</select></Field></div></section>
+      <section style={SECTION}><h2 style={{ marginTop:0 }}>Основное</h2><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:12 }}><TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} /><TextField label="Код ТТК" value={form.ttkCode} onChange={v => update('ttkCode', v)} /><TextField label="Категория" value={form.category} onChange={v => update('category', v)} /><TextField label="Цех" value={form.station} onChange={v => update('station', v)} /><TextField label="Выход" value={form.output} onChange={v => update('output', v)} /><Field label="Статус"><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="in_progress">В работе</option><option value="standard">Эталон</option></select></Field><Field label="Группа"><select value={form.groupId || UNGROUPED_GROUP_ID} onChange={e => update('groupId', e.target.value)} style={{ ...SEL_ST, width:'100%' }}>{groups.filter(group => group.id !== ALL_GROUP_ID).map(group => <option key={group.id} value={group.id}>{group.title}</option>)}</select></Field></div></section>
       <section style={SECTION}><h2 style={{ marginTop:0 }}>Фото</h2><FileInput label="Главное фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} /></section>
       <section style={SECTION}><datalist id="ttk-items">{searchItems.map(item => <option key={`${item.type}-${item.id}`} value={item.name}>{ITEM_TYPE_LABELS[item.type]} · {item.unit || item.output}</option>)}</datalist><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}><h2 style={{ margin:0 }}>Таблица компонентов</h2><button type="button" onClick={() => update('rows', [...form.rows, { ...EMPTY_ROW, id: makeId('row') }])} style={PRIMARY}>Добавить строку</button></div><div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['Кол-во','Наименование','П/Ф','Описание',''].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead><tbody>{form.rows.map((row, index) => <tr key={row.id || index}><td style={TD}><input value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td><td style={TD}><input list="ttk-items" value={row.name} onChange={e => selectItem(index, e.target.value)} style={INPUT} />{row.itemType && <div style={{ color:'#64748b', fontSize:11 }}>{ITEM_TYPE_LABELS[row.itemType]}</div>}</td><td style={TD}><textarea value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA} /></td><td style={TD}><textarea value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA} /></td><td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SOFT}>×</button></td></tr>)}</tbody></table></div></section>
       <section style={SECTION}><TextAreaField label="Краткое описание блюда" value={form.description} onChange={v => update('description', v)} /></section><section style={SECTION}><TextAreaField label="Способ приготовления" value={form.cookingMethod} onChange={v => update('cookingMethod', v)} /></section><section style={SECTION}><TextAreaField label="Оформление и подача" value={form.plating} onChange={v => update('plating', v)} /></section><section style={SECTION}><TextAreaField label="Контроль качества" value={form.qualityControl} onChange={v => update('qualityControl', v)} /></section><section style={SECTION}><TextAreaField label="Типичные ошибки" value={form.typicalMistakes} onChange={v => update('typicalMistakes', v)} /></section>
