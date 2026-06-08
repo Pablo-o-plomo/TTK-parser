@@ -398,16 +398,16 @@ function makePrintableHtml(sourceTtk) {
     <div class="photo-wrap">${photoHtml}</div>
 
     <div class="meta">
-      <div class="meta-card"><div class="meta-label">Выход</div><div class="meta-value">${escapeHtml(ttk.output || '—')}</div></div>
+      <div class="meta-card"><div class="meta-label">Выход</div><div class="meta-value">${escapeHtml(ttk.yield || ttk.output || '—')}</div></div>
       <div class="meta-card"><div class="meta-label">Сборка</div><div class="meta-value">${escapeHtml(ttk.assemblyTime || ttk.time || '—')}</div></div>
       <div class="meta-card"><div class="meta-label">Категория</div><div class="meta-value">${escapeHtml(ttk.category || '—')}</div></div>
-      <div class="meta-card"><div class="meta-label">Посуда</div><div class="meta-value">${escapeHtml(ttk.plate || '—')}</div></div>
+      <div class="meta-card"><div class="meta-label">Посуда</div><div class="meta-value">${escapeHtml(ttk.dishware || ttk.plate || '—')}</div></div>
     </div>
 
     <div class="grid">
       <section class="block">
         <h2>Описание блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.dishDescription))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.description || ttk.dishDescription))}</div>
       </section>
 
       <section class="block">
@@ -420,12 +420,12 @@ function makePrintableHtml(sourceTtk) {
 
       <section class="block wide">
         <h2>Способ приготовления</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.technology))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.cookingMethod || ttk.technology))}</div>
       </section>
 
       <section class="block">
         <h2>Стандарт блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.standard))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.dishStandard || ttk.standard))}</div>
       </section>
 
       <section class="block">
@@ -816,7 +816,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     <form onSubmit={e => { e.preventDefault(); saveForm() }} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#faf8f5' }}>
         <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
+          <h1 style={{ margin: '0 0 8px', fontSize: 25, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
           <div style={{ color: '#64748b', fontSize: 14 }}>Фото, состав блюда, описание, способ приготовления, стандарт блюда и подача. Без брутто/нетто.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1024,9 +1024,9 @@ export function ReferenceTtkView({ ttk: rawTtk, onBack, onEdit, onDuplicate, onD
         <div>
           <button onClick={onBack} style={{ ...SEL_ST, marginBottom: 12 }}>← Карточки блюд</button>
           <div><TtkStatus status={ttk.status} /></div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
+          <h1 style={{ margin: '10px 0 6px', fontSize: 25, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
           <div style={{ color: '#64748b' }}>
-            Выход: {ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
+            Выход: {ttk.yield || ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1053,7 +1053,7 @@ function PrintablePage({ ttk: rawTtk }) {
       <div style={PRINT_BG_1} />
       <div style={PRINT_BG_2} />
 
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '7mm' }}>
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '4mm' }}>
         <div style={{ textAlign: 'center', fontSize: 10, letterSpacing: '.22em', textTransform: 'uppercase', color: '#7a6f62', fontWeight: 800 }}>
           Клёво · стандарт блюда
         </div>
@@ -1071,19 +1071,19 @@ function PrintablePage({ ttk: rawTtk }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          <MetaCard label="Выход" value={ttk.output || '—'} />
+          <MetaCard label="Выход" value={ttk.yield || ttk.output || '—'} />
           <MetaCard label="Сборка" value={ttk.assemblyTime || ttk.time || '—'} />
           <MetaCard label="Категория" value={ttk.category || '—'} />
-          <MetaCard label="Посуда" value={ttk.plate || '—'} />
+          <MetaCard label="Посуда" value={ttk.dishware || ttk.plate || '—'} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '.95fr 1.05fr', gap: 12, alignItems: 'start' }}>
           <PrintBlock title="Описание блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.dishDescription)}</div>
+            <div style={PRINT_TEXT}>{textOrDash(ttk.description || ttk.dishDescription)}</div>
           </PrintBlock>
 
           <PrintBlock title="Состав блюда">
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12.8, lineHeight: 1.3 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11, lineHeight: 1.3 }}>
               <thead>
                 <tr>
                   <th style={{ ...PRINT_TH, width: '58%' }}>Наименование</th>
@@ -1110,12 +1110,12 @@ function PrintablePage({ ttk: rawTtk }) {
 
           <div style={{ gridColumn: '1 / -1' }}>
             <PrintBlock title="Способ приготовления">
-              <div style={PRINT_TEXT}>{textOrDash(ttk.technology)}</div>
+              <div style={PRINT_TEXT}>{textOrDash(ttk.cookingMethod || ttk.technology)}</div>
             </PrintBlock>
           </div>
 
           <PrintBlock title="Стандарт блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.standard)}</div>
+            <div style={PRINT_TEXT}>{textOrDash(ttk.dishStandard || ttk.standard)}</div>
           </PrintBlock>
 
           <PrintBlock title="Подача">
@@ -1150,10 +1150,10 @@ const PRINT_PAGE = {
   minHeight: '297mm',
   background: '#faf8f5',
   boxShadow: '0 24px 70px rgba(15,23,42,.16)',
-  padding: '16mm',
+  padding: '10mm',
   display: 'flex',
   flexDirection: 'column',
-  gap: '7mm',
+  gap: '4mm',
   position: 'relative',
   overflow: 'hidden',
   fontFamily: 'Inter, Manrope, Arial, sans-serif',
@@ -1182,7 +1182,7 @@ const PRINT_BG_2 = {
 const PRINT_TITLE = {
   margin: 0,
   textAlign: 'center',
-  fontSize: 30,
+  fontSize: 25,
   lineHeight: 1.08,
   color: '#16332b',
   letterSpacing: '-.03em',
@@ -1191,7 +1191,7 @@ const PRINT_TITLE = {
 
 const PRINT_PHOTO_WRAP = {
   width: '100%',
-  height: '104mm',
+  height: '78mm',
   border: 'none',
   borderRadius: 24,
   overflow: 'hidden',
@@ -1212,13 +1212,13 @@ const PRINT_BLOCK = {
   background: '#fff',
   border: '1px solid #ece8df',
   borderRadius: 20,
-  padding: 16,
+  padding: 10,
   boxShadow: '0 8px 24px rgba(31,41,55,.045)',
 }
 
 const PRINT_H2 = {
   margin: '0 0 12px',
-  fontSize: 17,
+  fontSize: 14,
   fontWeight: 800,
   color: '#16332b',
   letterSpacing: '-.01em',
@@ -1246,13 +1246,14 @@ const PRINT_TD = {
   borderTop: 'none',
   verticalAlign: 'middle',
   wordBreak: 'break-word',
-  fontSize: 12.8,
+  fontSize: 11,
   color: '#1f2937',
 }
 
 const PRINT_TEXT = {
-  fontSize: 13.5,
+  fontSize: 11.5,
   lineHeight: 1.65,
   color: '#374151',
   whiteSpace: 'pre-wrap',
 }
+
