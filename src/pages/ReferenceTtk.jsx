@@ -261,6 +261,8 @@ function normalizeAiResponse(payload) {
 function getAiErrorMessage(error) {
   if (error?.message === 'AI_BACKEND_REQUIRED') return 'AI требует backend endpoint /api/generate-ttk'
   if (error?.message === 'OPENAI_API_KEY_MISSING') return 'OPENAI_API_KEY не настроен. Добавьте ключ в переменные окружения Railway.'
+  if (error?.message === 'INVALID_AI_RESPONSE') return 'AI вернул некорректный ответ'
+  if (error?.message === 'EMPTY_INGREDIENTS') return 'Добавьте состав блюда перед генерацией'
   return 'Не удалось заполнить ТТК с AI'
 }
 
@@ -285,6 +287,8 @@ async function generateTtkWithAI(ttkData) {
     if (message.includes('OPENAI_API_KEY') || payload?.code === 'OPENAI_API_KEY_MISSING') {
       throw new Error('OPENAI_API_KEY_MISSING')
     }
+    if (message.includes('состав блюда')) throw new Error('EMPTY_INGREDIENTS')
+    if (message.includes('некорректный ответ')) throw new Error('INVALID_AI_RESPONSE')
     throw new Error('AI_REQUEST_FAILED')
   }
 
