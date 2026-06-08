@@ -195,10 +195,6 @@ function textOrDash(value) {
   return value && String(value).trim() ? value : '—'
 }
 
-function getEnvValue(key) {
-  return import.meta.env?.[key]
-}
-
 function hasText(value) {
   return Boolean(String(value || '').trim())
 }
@@ -214,52 +210,16 @@ function makeAiDishPayload(ttk) {
 
   return {
     title: normalized.title || '',
-    output: normalized.output || '',
+    yield: normalized.output || '',
     assemblyTime: normalized.assemblyTime || normalized.time || '',
     category: normalized.category || '',
-    plate: normalized.plate || '',
-    rows: getFilledRows(normalized.rows).map(row => ({
+    dishware: normalized.plate || '',
+    ingredients: getFilledRows(normalized.rows).map(row => ({
       name: row.name,
       type: getTypeBadge(row.type).label,
-      qty: row.qty || '',
+      quantity: row.qty || '',
     })),
   }
-}
-
-function makeAiPrompt(dish) {
-  const rowsText = dish.rows
-    .map(row => `- ${row.name} | ${row.type} | ${row.qty || '—'}`)
-    .join('\n')
-
-  return `Ты — технолог ресторанной сети и бренд-шеф.
-На основе данных ТТК составь профессиональный текст для карточки блюда.
-
-Правила:
-- Пиши на русском языке.
-- Стиль: коротко, профессионально, понятно для повара.
-- Не добавляй ингредиенты, которых нет в составе.
-- Не меняй граммовки.
-- Если ингредиент имеет тип "П/Ф", считай его готовым полуфабрикатом.
-- Описывай именно сборку и подачу блюда на кухне.
-- Не используй художественные длинные описания.
-- Не придумывай лишние технологические процессы.
-- Верни только JSON без markdown.
-
-Формат ответа:
-{
-  "cookingMethod": "текст способа приготовления",
-  "dishStandard": "текст стандарта блюда",
-  "serving": "текст подачи"
-}
-
-Данные блюда:
-Название: ${dish.title || '—'}
-Выход: ${dish.output || '—'}
-Время сборки: ${dish.assemblyTime || '—'}
-Категория: ${dish.category || '—'}
-Посуда: ${dish.plate || '—'}
-Состав:
-${rowsText}`
 }
 
 function extractJsonObject(value) {
@@ -298,75 +258,42 @@ function normalizeAiResponse(payload) {
   return result.cookingMethod && result.dishStandard && result.serving ? result : null
 }
 
-function makeLocalAiDraft(dish) {
-  const rows = dish.rows.map(row => `${row.name}${row.qty ? ` (${row.qty})` : ''}`)
-  const firstRow = rows[0] || 'подготовленные компоненты'
-  const restRows = rows.slice(1)
-
-  return {
-    cookingMethod: [
-      'Проверить готовность всех компонентов по составу ТТК.',
-      `В ${dish.plate || 'посуду подачи'} выложить ${firstRow}.`,
-      restRows.length ? `Добавить ${restRows.join(', ')} согласно указанным граммовкам.` : '',
-      'Собрать блюдо аккуратно, не меняя состав и выход.',
-    ].filter(Boolean).join('\n'),
-    dishStandard: [
-      'Все компоненты соответствуют составу ТТК и подготовлены к сборке.',
-      'Граммовки соблюдены, лишние ингредиенты не добавлены.',
-      'Блюдо имеет аккуратный внешний вид, без загрязнений по борту посуды.',
-      dish.assemblyTime ? `Сборка выполняется в пределах ${dish.assemblyTime}.` : '',
-    ].filter(Boolean).join('\n'),
-    serving: [
-      `Подавать в ${dish.plate || 'указанной посуде'} сразу после сборки.`,
-      'Компоненты расположить аккуратно, сохранить чистый край посуды.',
-      'Перед отдачей проверить выход, внешний вид и соответствие стандарту блюда.',
-    ].join('\n'),
-  }
+function getAiErrorMessage(error) {
+  if (error?.message === 'AI_BACKEND_REQUIRED') return 'AI требует backend endpoint /api/generate-ttk'
+  if (error?.message === 'OPENAI_API_KEY_MISSING') return 'OPENAI_API_KEY не настроен. Добавьте ключ в переменные окружения Railway.'
+  return 'Не удалось заполнить ТТК с AI'
 }
 
-async function requestReferenceTtkAi(dish) {
-  const prompt = makeAiPrompt(dish)
-  const endpoint = getEnvValue('VITE_REFERENCE_TTK_AI_ENDPOINT')
-  const apiKey = getEnvValue('VITE_OPENAI_API_KEY')
-  const model = getEnvValue('VITE_OPENAI_MODEL') || 'gpt-4o-mini'
+async function generateTtkWithAI(ttkData) {
+  const response = await fetch('/api/generate-ttk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ttkData),
+  })
 
-  if (endpoint) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, dish }),
-    })
+  if (response.status === 404) throw new Error('AI_BACKEND_REQUIRED')
 
-    if (!response.ok) throw new Error('AI endpoint unavailable')
-    const json = await response.json()
-    const result = normalizeAiResponse(json)
-    if (!result) throw new Error('Invalid AI response')
-    return result
+  let payload = null
+  try {
+    payload = await response.json()
+  } catch {
+    throw new Error('AI_BACKEND_REQUIRED')
   }
 
-  if (apiKey) {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        input: prompt,
-        text: { format: { type: 'json_object' } },
-      }),
-    })
-
-    if (!response.ok) throw new Error('OpenAI unavailable')
-    const json = await response.json()
-    const result = normalizeAiResponse(json)
-    if (!result) throw new Error('Invalid AI response')
-    return result
+  if (!response.ok) {
+    const message = payload?.error || payload?.message || ''
+    if (message.includes('OPENAI_API_KEY') || payload?.code === 'OPENAI_API_KEY_MISSING') {
+      throw new Error('OPENAI_API_KEY_MISSING')
+    }
+    throw new Error('AI_REQUEST_FAILED')
   }
 
-  return makeLocalAiDraft(dish)
+  const result = normalizeAiResponse(payload)
+  if (!result) throw new Error('INVALID_AI_RESPONSE')
+
+  return result
 }
+
 
 function makePrintableHtml(sourceTtk) {
   const ttk = normalizeTtk(sourceTtk)
@@ -801,7 +728,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
   async function fillTextBlocksWithAi() {
     const dish = makeAiDishPayload(form)
 
-    if (dish.rows.length === 0) {
+    if (dish.ingredients.length === 0) {
       setAiStatus('error')
       setAiMessage('Добавьте состав блюда перед генерацией')
       return
@@ -812,8 +739,8 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
     setShowAiReplaceConfirm(false)
 
     try {
-      const aiText = await requestReferenceTtkAi(dish)
-      if (!aiText) throw new Error('Invalid AI response')
+      const aiText = await generateTtkWithAI(dish)
+      if (!aiText) throw new Error('INVALID_AI_RESPONSE')
 
       setForm(current => ({
         ...current,
@@ -823,9 +750,9 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
       }))
       setAiStatus('success')
       setAiMessage('Текстовые блоки заполнены. Их можно отредактировать вручную.')
-    } catch {
+    } catch (error) {
       setAiStatus('error')
-      setAiMessage('Не удалось заполнить ТТК с AI')
+      setAiMessage(getAiErrorMessage(error))
     }
   }
 
