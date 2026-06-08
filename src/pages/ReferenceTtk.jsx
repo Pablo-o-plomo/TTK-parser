@@ -350,7 +350,7 @@ function makePrintableHtml(sourceTtk) {
       <tr>
         <td>${escapeHtml(cleanRow.name)}</td>
         <td class="muted">${escapeHtml(badge.label)}</td>
-        <td class="qty">${escapeHtml(cleanRow.qty)}</td>
+        <td class="qty">${escapeHtml(formatQty(cleanRow.qty || cleanRow.quantity))}</td>
       </tr>
     `
   }).join('')
@@ -1113,7 +1113,7 @@ function PrintablePage({ ttk: rawTtk }) {
                     <tr key={index}>
                       <td style={{ ...PRINT_TD, fontWeight: 800 }}>{cleanRow.name}</td>
                       <td style={{ ...PRINT_TD, textAlign: 'center', color: '#6b7280', fontWeight: 600 }}>{badge.label}</td>
-                      <td style={{ ...PRINT_TD, textAlign: 'center', fontWeight: 900 }}>{cleanRow.qty}</td>
+                      <td style={{ ...PRINT_TD, textAlign: 'center', fontWeight: 900 }}>{formatQty(cleanRow.qty || cleanRow.quantity)}</td>
                     </tr>
                   )
                 })}
