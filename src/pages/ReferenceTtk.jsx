@@ -212,6 +212,12 @@ function normalizeTtk(ttk = {}) {
   }
 }
 
+function formatQty(value) {
+  const clean = String(value || '').trim()
+  if (!clean) return ''
+  return /\d$/.test(clean) ? ${clean} г : clean
+}
+
 function getTypeBadge(type) {
   return TYPE_BADGE[type] || TYPE_BADGE.nomenclature
 }
