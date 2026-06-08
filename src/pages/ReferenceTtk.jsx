@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { Tag, SEL_ST } from '../components/ui.jsx'
 import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
 import { NOMENCLATURE_TYPE_LABELS } from '../hooks/useNomenclature.js'
@@ -390,16 +390,16 @@ function makePrintableHtml(sourceTtk) {
     <div class="photo-wrap">${photoHtml}</div>
 
     <div class="meta">
-      <div class="meta-card"><div class="meta-label">Выход</div><div class="meta-value">${escapeHtml(ttk.output || '—')}</div></div>
+      <div class="meta-card"><div class="meta-label">Выход</div><div class="meta-value">${escapeHtml(ttk.yield || ttk.output || '—')}</div></div>
       <div class="meta-card"><div class="meta-label">Сборка</div><div class="meta-value">${escapeHtml(ttk.assemblyTime || ttk.time || '—')}</div></div>
       <div class="meta-card"><div class="meta-label">Категория</div><div class="meta-value">${escapeHtml(ttk.category || '—')}</div></div>
-      <div class="meta-card"><div class="meta-label">Посуда</div><div class="meta-value">${escapeHtml(ttk.plate || '—')}</div></div>
+      <div class="meta-card"><div class="meta-label">Посуда</div><div class="meta-value">${escapeHtml(ttk.dishware || ttk.plate || '—')}</div></div>
     </div>
 
     <div class="grid">
       <section class="block">
         <h2>Описание блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.dishDescription))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.description || ttk.dishDescription))}</div>
       </section>
 
       <section class="block">
@@ -412,12 +412,12 @@ function makePrintableHtml(sourceTtk) {
 
       <section class="block wide">
         <h2>Способ приготовления</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.technology))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.cookingMethod || ttk.technology))}</div>
       </section>
 
       <section class="block">
         <h2>Стандарт блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.standard))}</div>
+        <div class="text">${escapeHtml(textOrDash(ttk.dishStandard || ttk.standard))}</div>
       </section>
 
       <section class="block">
@@ -624,7 +624,7 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
                         <TtkStatus status={item.status} />
                       </div>
                       <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.7 }}>
-                        Выход: {item.output || '—'}<br />
+                        Выход: {item.yield || item.output || '—'}<br />
                         Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
                       </div>
                       <label style={{ ...FIELD, marginTop: 12 }}>
@@ -797,7 +797,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
   }
 
   function saveForm() {
-    onSave(normalizeTtk(form))
+    onSave(form)
   }
 
   return (
@@ -1014,7 +1014,7 @@ export function ReferenceTtkView({ ttk: rawTtk, onBack, onEdit, onDuplicate, onD
           <div><TtkStatus status={ttk.status} /></div>
           <h1 style={{ margin: '10px 0 6px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
           <div style={{ color: '#64748b' }}>
-            Выход: {ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
+            Выход: {ttk.yield || ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1059,15 +1059,15 @@ function PrintablePage({ ttk: rawTtk }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          <MetaCard label="Выход" value={ttk.output || '—'} />
+          <MetaCard label="Выход" value={ttk.yield || ttk.output || '—'} />
           <MetaCard label="Сборка" value={ttk.assemblyTime || ttk.time || '—'} />
           <MetaCard label="Категория" value={ttk.category || '—'} />
-          <MetaCard label="Посуда" value={ttk.plate || '—'} />
+          <MetaCard label="Посуда" value={ttk.dishware || ttk.plate || '—'} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '.95fr 1.05fr', gap: 12, alignItems: 'start' }}>
           <PrintBlock title="Описание блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.dishDescription)}</div>
+            <div style={PRINT_TEXT}>{textOrDash(ttk.description || ttk.dishDescription)}</div>
           </PrintBlock>
 
           <PrintBlock title="Состав блюда">
@@ -1098,12 +1098,12 @@ function PrintablePage({ ttk: rawTtk }) {
 
           <div style={{ gridColumn: '1 / -1' }}>
             <PrintBlock title="Способ приготовления">
-              <div style={PRINT_TEXT}>{textOrDash(ttk.technology)}</div>
+              <div style={PRINT_TEXT}>{textOrDash(ttk.cookingMethod || ttk.technology)}</div>
             </PrintBlock>
           </div>
 
           <PrintBlock title="Стандарт блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.standard)}</div>
+            <div style={PRINT_TEXT}>{textOrDash(ttk.dishStandard || ttk.standard)}</div>
           </PrintBlock>
 
           <PrintBlock title="Подача">
@@ -1244,3 +1244,4 @@ const PRINT_TEXT = {
   color: '#374151',
   whiteSpace: 'pre-wrap',
 }
+
