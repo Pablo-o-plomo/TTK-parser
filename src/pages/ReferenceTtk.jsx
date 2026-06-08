@@ -1,91 +1,28 @@
 import { useMemo, useState } from 'react'
 import { Tag, SEL_ST } from '../components/ui.jsx'
-import { createEmptyReferenceTtk } from '../hooks/useReferenceTtk.js'
-import { NOMENCLATURE_TYPE_LABELS } from '../hooks/useNomenclature.js'
+import { createEmptyReferenceTtk } from '../storage/referenceTtkStore.js'
+import { SEMIFINISHED_TYPE_LABELS } from '../storage/semifinishedStore.js'
 
-const STATUS_LABELS = {
-  draft: 'Черновик',
-  approved: 'Готова к печати',
-}
-
-const STATUS_COLORS = {
-  draft: '#64748b',
-  approved: '#0f766e',
-}
-
-const TYPE_LABELS = {
-  product: 'Товар',
-  semifinished: 'П/Ф',
-  sauce: 'Соус',
-  prep: 'Заготовка',
-  nomenclature: 'Номенклатура',
-}
-
-const TYPE_BADGE = {
-  product: { label: 'Товар', bg: 'transparent', color: '#6b7280' },
-  semifinished: { label: 'П/Ф', bg: 'transparent', color: '#6b7280' },
-  sauce: { label: 'Соус', bg: 'transparent', color: '#6b7280' },
-  prep: { label: 'Заготовка', bg: 'transparent', color: '#6b7280' },
-  nomenclature: { label: 'Номенклатура', bg: 'transparent', color: '#6b7280' },
-}
-
-const SECTION = {
-  background: '#fff',
-  border: '1px solid #ece8df',
-  borderRadius: 22,
-  padding: 22,
-  boxShadow: '0 12px 36px rgba(15,23,42,.06)',
-}
-
-const FIELD = { display: 'flex', flexDirection: 'column', gap: 7 }
-
-const INPUT = {
-  ...SEL_ST,
-  width: '100%',
-  boxSizing: 'border-box',
-  cursor: 'text',
-  borderRadius: 14,
-  borderColor: '#e5e1d8',
-  background: '#fff',
-}
-
-const TEXTAREA = {
-  width: '100%',
-  boxSizing: 'border-box',
-  minHeight: 120,
-  border: '1px solid #e5e1d8',
-  borderRadius: 16,
-  padding: 14,
-  fontSize: 14,
-  outline: 'none',
-  resize: 'vertical',
-  fontFamily: 'inherit',
-  lineHeight: 1.6,
-  background: '#fff',
-}
-
-const PRIMARY = {
-  ...SEL_ST,
-  background: '#16332b',
-  borderColor: '#16332b',
-  color: '#fff',
-  fontWeight: 900,
-  padding: '11px 18px',
-  borderRadius: 999,
-}
-
-const EMPTY_ROW = { name: '', type: 'product', qty: '', semifinished: '', description: '' }
+const STATUS_LABELS = { draft: 'Черновик', in_progress: 'В работе', standard: 'Эталон' }
+const STATUS_COLORS = { draft: '#64748b', in_progress: '#d97706', standard: '#16a34a' }
+const ITEM_TYPE_LABELS = { product: 'Товар', ...SEMIFINISHED_TYPE_LABELS }
+const DETAIL_TYPES = ['semifinished', 'sauce', 'prep']
+const EMPTY_ROW = { id: '', qty: '', itemId: '', itemType: '', name: '', semifinished: '', description: '' }
+const SECTION = { background:'#fff', border:'1px solid #e8ecf0', borderRadius:16, padding:18 }
+const FIELD = { display:'flex', flexDirection:'column', gap:6 }
+const INPUT = { ...SEL_ST, width:'100%', boxSizing:'border-box', cursor:'text' }
+const TEXTAREA = { width:'100%', boxSizing:'border-box', minHeight:96, border:'1.5px solid #e5e7eb', borderRadius:12, padding:12, fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }
+const PRIMARY = { ...SEL_ST, background:'#6366f1', borderColor:'#6366f1', color:'#fff', fontWeight:900, padding:'11px 16px' }
 
 function formatDate(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleDateString('ru-RU')
+  return value ? new Date(value).toLocaleDateString('ru-RU') : '—'
 }
 
 function fileToPayload(file) {
   return new Promise(resolve => {
     if (!file) return resolve(null)
     const reader = new FileReader()
-    reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, dataUrl: reader.result })
+    reader.onload = () => resolve({ name:file.name, type:file.type, size:file.size, dataUrl:reader.result })
     reader.readAsDataURL(file)
   })
 }
@@ -101,744 +38,88 @@ function downloadBlob(name, content, type) {
 }
 
 function escapeHtml(value = '') {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;')
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 }
 
-function normalizeRow(row = {}) {
-  return {
-    ...EMPTY_ROW,
-    ...row,
-    name: row.name || row.title || '',
-    type: row.type || row.source || (row.semifinished ? 'semifinished' : 'product'),
-    qty: row.qty || row.quantity || row.amount || '',
-  }
+function makePrintableHtml(ttk) {
+  const rowsHtml = (ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map(row => `<tr><td>${escapeHtml(row.qty)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.semifinished)}</td><td>${escapeHtml(row.description)}</td></tr>`).join('')
+  const photoHtml = ttk.photo?.dataUrl ? `<img class="dish-photo" src="${ttk.photo.dataUrl}" alt="${escapeHtml(ttk.title)}">` : '<div class="photo-placeholder">Фото блюда</div>'
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${escapeHtml(ttk.title || 'Эталонная ТТК')}</title><style>@page{size:A4;margin:12mm}body{margin:0;background:white;font-family:Arial,sans-serif;color:#111827}.no-print{display:none!important}.print-page{width:210mm;min-height:297mm;padding:12mm;page-break-after:always}h1{text-align:center;margin:0 0 8mm;text-transform:uppercase;font-size:22px}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6mm}.meta div,.box{border:1px solid #111827;padding:5px;font-size:11px}table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}th,td{border:1px solid #111827;padding:5px;vertical-align:top;word-break:break-word}th{background:#f3f4f6;text-transform:uppercase;font-size:9px}.dish-photo,.photo-placeholder{width:100%;height:70mm;border:1px solid #111827;object-fit:cover;display:flex;align-items:center;justify-content:center;color:#6b7280;margin:6mm 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}.text{white-space:pre-wrap;line-height:1.25}</style></head><body><main class="print-page"><h1>${escapeHtml(ttk.title || 'Название блюда')}</h1><div class="meta"><div><b>Код</b><br>${escapeHtml(ttk.ttkCode || '—')}</div><div><b>Категория</b><br>${escapeHtml(ttk.category || '—')}</div><div><b>Цех</b><br>${escapeHtml(ttk.station || '—')}</div><div><b>Выход</b><br>${escapeHtml(ttk.output || '—')}</div></div><table><thead><tr><th style="width:16%">Кол-во</th><th style="width:24%">Наименование</th><th style="width:30%">П/Ф</th><th style="width:30%">Описание</th></tr></thead><tbody>${rowsHtml}</tbody></table>${photoHtml}<div class="grid"><section class="box"><b>Описание</b><div class="text">${escapeHtml(ttk.description || '—')}</div></section><section class="box"><b>Способ приготовления</b><div class="text">${escapeHtml(ttk.cookingMethod || '—')}</div></section><section class="box"><b>Оформление</b><div class="text">${escapeHtml(ttk.plating || '—')}</div></section><section class="box"><b>Контроль качества</b><div class="text">${escapeHtml(ttk.qualityControl || '—')}</div></section></div><section class="box"><b>Типичные ошибки</b><div class="text">${escapeHtml(ttk.typicalMistakes || '—')}</div></section></main><script>window.print()</script></body></html>`
 }
 
-function normalizeTtk(ttk = {}) {
-  return {
-    ...ttk,
-    rows: (ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map(normalizeRow),
-    technology: ttk.technology || ttk.cookingMethod || ttk.description || '',
-    serving: ttk.serving || ttk.presentation || '',
-    dishDescription: ttk.dishDescription || ttk.menuDescription || ttk.descriptionText || '',
-    standard: ttk.standard || ttk.qualityStandard || '',
-    category: ttk.category || '',
-    plate: ttk.plate || ttk.dishware || '',
-  }
+
+export function openPrintableTtk(ttk) {
+  const win = window.open('', '_blank')
+  if (!win) return
+  win.document.write(makePrintableHtml(ttk))
+  win.document.close()
 }
 
-function getTypeBadge(type) {
-  return TYPE_BADGE[type] || TYPE_BADGE.nomenclature
-}
-
-function textOrDash(value) {
-  return value && String(value).trim() ? value : '—'
-}
-
-function makePrintableHtml(sourceTtk) {
-  const ttk = normalizeTtk(sourceTtk)
-  const rows = ttk.rows?.length ? ttk.rows : [EMPTY_ROW]
-
-  const rowsHtml = rows.map(row => {
-    const cleanRow = normalizeRow(row)
-    const badge = getTypeBadge(cleanRow.type)
-
-    return `
-      <tr>
-        <td>${escapeHtml(cleanRow.name)}</td>
-        <td class="muted">${escapeHtml(badge.label)}</td>
-        <td class="qty">${escapeHtml(cleanRow.qty)}</td>
-      </tr>
-    `
-  }).join('')
-
-  const photoHtml = ttk.photo?.dataUrl
-    ? `<img class="dish-photo" src="${ttk.photo.dataUrl}" alt="${escapeHtml(ttk.title)}">`
-    : '<div class="photo-placeholder">Фото блюда</div>'
-
-  return `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<title>${escapeHtml(ttk.title || 'Карточка блюда')}</title>
-<style>
-  @page{size:A4;margin:0}
-  *{box-sizing:border-box}
-  body{margin:0;background:#f4efe7;font-family:Inter,Manrope,Arial,Helvetica,sans-serif;color:#1f2937}
-  .page{width:210mm;min-height:297mm;margin:0 auto;background:#faf8f5;padding:16mm;display:flex;flex-direction:column;gap:7mm;position:relative;overflow:hidden}
-  .page:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 10% 12%,rgba(22,51,43,.06),transparent 25%),radial-gradient(circle at 88% 4%,rgba(185,145,80,.08),transparent 22%);pointer-events:none}
-  .content{position:relative;z-index:1;display:flex;flex-direction:column;gap:7mm}
-  .kicker{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#7a6f62;font-weight:800;text-align:center}
-  h1{margin:0;text-align:center;font-size:30px;line-height:1.08;color:#16332b;letter-spacing:-.03em;font-weight:900}
-  .photo-wrap{width:100%;height:104mm;overflow:hidden;border-radius:24px;box-shadow:0 16px 42px rgba(31,41,55,.14);background:#eee7dc}
-  .dish-photo{width:100%;height:100%;object-fit:cover;display:block}
-  .photo-placeholder{height:100%;display:flex;align-items:center;justify-content:center;color:#8b8174;font-size:18px;background:#eee7dc}
-  .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-  .meta-card{background:#fff;border:1px solid #ece8df;border-radius:16px;padding:10px 12px;box-shadow:0 4px 14px rgba(31,41,55,.04)}
-  .meta-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#8b8174;font-weight:800;margin-bottom:4px}
-  .meta-value{font-size:14px;color:#1f2937;font-weight:900}
-  .grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:12px;align-items:start}
-  .block{background:#fff;border:1px solid #ece8df;border-radius:20px;padding:16px;box-shadow:0 8px 24px rgba(31,41,55,.045)}
-  h2{margin:0 0 12px;font-size:17px;color:#16332b;letter-spacing:-.01em}
-  .text{font-size:13.5px;line-height:1.65;color:#374151;white-space:pre-wrap}
-  table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.8px;line-height:1.3}
-  th{padding:9px 8px;background:#f8f6f2;border-bottom:1px solid #ebe7de;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8b8174}
-  td{padding:10px 8px;border-bottom:1px solid #f0ede6;vertical-align:middle;word-break:break-word;color:#1f2937}
-  th:nth-child(1),td:nth-child(1){width:58%;font-weight:800}
-  th:nth-child(2),td:nth-child(2){width:18%;text-align:center}
-  th:nth-child(3),td:nth-child(3){width:24%;text-align:center}
-  .muted{color:#6b7280;font-weight:600}
-  .qty{font-weight:900}
-  .wide{grid-column:1 / -1}
-  @media print{body{background:#fff}.page{margin:0;width:210mm;min-height:297mm;box-shadow:none}}
-</style>
-</head>
-<body>
-<main class="page">
-  <div class="content">
-    <div class="kicker">Клёво · стандарт блюда</div>
-    <h1>${escapeHtml(ttk.title || 'Название блюда')}</h1>
-    <div class="photo-wrap">${photoHtml}</div>
-
-    <div class="meta">
-      <div class="meta-card"><div class="meta-label">Выход</div><div class="meta-value">${escapeHtml(ttk.output || '—')}</div></div>
-      <div class="meta-card"><div class="meta-label">Сборка</div><div class="meta-value">${escapeHtml(ttk.assemblyTime || ttk.time || '—')}</div></div>
-      <div class="meta-card"><div class="meta-label">Категория</div><div class="meta-value">${escapeHtml(ttk.category || '—')}</div></div>
-      <div class="meta-card"><div class="meta-label">Посуда</div><div class="meta-value">${escapeHtml(ttk.plate || '—')}</div></div>
-    </div>
-
-    <div class="grid">
-      <section class="block">
-        <h2>Описание блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.dishDescription))}</div>
-      </section>
-
-      <section class="block">
-        <h2>Состав блюда</h2>
-        <table>
-          <thead><tr><th>Наименование</th><th>Тип</th><th>Кол-во</th></tr></thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-      </section>
-
-      <section class="block wide">
-        <h2>Способ приготовления</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.technology))}</div>
-      </section>
-
-      <section class="block">
-        <h2>Стандарт блюда</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.standard))}</div>
-      </section>
-
-      <section class="block">
-        <h2>Подача</h2>
-        <div class="text">${escapeHtml(textOrDash(ttk.serving))}</div>
-      </section>
-    </div>
-  </div>
-</main>
-</body>
-</html>`
-}
-
-function TtkStatus({ status }) {
+function StatusTag({ status }) {
   return <Tag color={STATUS_COLORS[status] || '#64748b'}>{STATUS_LABELS[status] || status}</Tag>
 }
 
-function Photo({ file, label, large = false }) {
-  return (
-    <div style={{
-      background: '#f3efe7',
-      border: '1px dashed #d8d0c3',
-      borderRadius: large ? 24 : 18,
-      minHeight: large ? 260 : 150,
-      height: large ? 320 : '100%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      overflow: 'hidden',
-    }}>
-      {file?.dataUrl ? (
-        <img src={file.dataUrl} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <span style={{ color: '#8b8174', fontSize: 13 }}>{label}</span>
-      )}
-    </div>
-  )
+function Field({ label, children }) {
+  return <label style={FIELD}><span style={{ fontSize:12, fontWeight:800, color:'#475569' }}>{label}</span>{children}</label>
 }
 
-export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#faf8f5' }}>
-        <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 32, color: '#16332b', letterSpacing: '-.03em' }}>Карточки блюд</h1>
-          <div style={{ color: '#6b7280', fontSize: 14 }}>Премиальные карточки A4 для кухни: фото, состав, способ приготовления, стандарт блюда и подача.</div>
-        </div>
-        <button onClick={onCreate} style={PRIMARY}>Создать карточку</button>
-      </div>
+function TextField({ label, value, onChange }) {
+  return <Field label={label}><input value={value || ''} onChange={e => onChange(e.target.value)} style={INPUT} /></Field>
+}
 
-      {items.length === 0 ? (
-        <div style={{ ...SECTION, textAlign: 'center', padding: 48 }}>
-          <div style={{ fontSize: 46 }}>📄</div>
-          <h2 style={{ margin: '8px 0', color: '#16332b' }}>Пока нет карточек блюд</h2>
-          <p style={{ color: '#64748b' }}>Создайте первую карточку: название, фото, состав блюда, способ приготовления и подача.</p>
-          <button onClick={onCreate} style={PRIMARY}>Создать первую карточку</button>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 18 }}>
-          {items.map(rawItem => {
-            const item = normalizeTtk(rawItem)
-
-            return (
-              <div key={item.id} style={{ ...SECTION, padding: 0, overflow: 'hidden', transition: '.25s' }}>
-                <div style={{ height: 190, background: '#f3efe7' }}>
-                  <Photo file={item.photo} label="Фото блюда" />
-                </div>
-                <div style={{ padding: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                    <h3 style={{ margin: '0 0 8px', fontSize: 19, color: '#16332b', letterSpacing: '-.02em' }}>{item.title || 'Без названия'}</h3>
-                    <TtkStatus status={item.status} />
-                  </div>
-                  <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.7 }}>
-                    Выход: {item.output || '—'}<br />
-                    Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 14 }}>
-                    <button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button>
-                    <button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button>
-                    <button onClick={() => onDownload(item)} style={SEL_ST}>Скачать JSON</button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+function TextAreaField({ label, value, onChange }) {
+  return <Field label={label}><textarea value={value || ''} onChange={e => onChange(e.target.value)} style={TEXTAREA} /></Field>
 }
 
 function FileInput({ label, accept, value, onChange }) {
+  return <Field label={label}><input type="file" accept={accept} onChange={async e => onChange(await fileToPayload(e.target.files?.[0]))} />{value?.name && <span style={{ fontSize:11, color:'#64748b' }}>{value.name}</span>}</Field>
+}
+
+export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDelete, onPrint }) {
   return (
-    <label style={FIELD}>
-      <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>{label}</span>
-      <input type="file" accept={accept} onChange={async e => onChange(await fileToPayload(e.target.files?.[0]))} style={{ fontSize: 12 }} />
-      {value?.name && <span style={{ fontSize: 11, color: '#64748b' }}>Загружено: {value.name}</span>}
-    </label>
+    <div style={{ display:'grid', gap:16 }}>
+      <section style={{ ...SECTION, display:'flex', justifyContent:'space-between', alignItems:'center' }}><div><h1 style={{ margin:'0 0 6px' }}>🍽 Эталонные ТТК</h1><div style={{ color:'#64748b' }}>Короткие эталонные карты для печати и ламинирования.</div></div><button onClick={onCreate} style={PRIMARY}>Создать ТТК</button></section>
+      {items.length === 0 ? <section style={{ ...SECTION, textAlign:'center', padding:42 }}>Пока нет эталонных ТТК</section> : <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14 }}>{items.map(item => <article key={item.id} style={{ ...SECTION, padding:0, overflow:'hidden' }}><div style={{ height:170, background:'#f8fafc' }}>{item.photo?.dataUrl && <img src={item.photo.dataUrl} alt={item.title} style={{ width:'100%', height:'100%', objectFit:'cover' }} />}</div><div style={{ padding:16 }}><div style={{ display:'flex', justifyContent:'space-between', gap:8 }}><h3 style={{ margin:'0 0 6px' }}>{item.title || 'Без названия'}</h3><StatusTag status={item.status} /></div><div style={{ color:'#64748b', fontSize:12, lineHeight:1.7 }}>Выход: {item.output || '—'}<br />{item.category || 'Категория не указана'} · {formatDate(item.updatedAt)}</div><div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:12 }}><button onClick={() => onOpen(item)} style={SEL_ST}>Открыть</button><button onClick={() => onEdit(item)} style={SEL_ST}>Редактировать</button><button onClick={() => onPrint(item)} style={SEL_ST}>Печать</button><button onClick={() => onDelete(item.id)} style={{ ...SEL_ST, color:'#dc2626' }}>Удалить</button></div></div></article>)}</div>}
+    </div>
   )
 }
 
-function TextField({ label, value, onChange, placeholder }) {
-  return (
-    <label style={FIELD}>
-      <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>{label}</span>
-      <input value={value || ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} style={INPUT} />
-    </label>
-  )
-}
+export function ReferenceTtkForm({ initial, nomenclature = [], onCancel, onSave }) {
+  const [form, setForm] = useState(() => initial || createEmptyReferenceTtk())
+  const searchItems = useMemo(() => nomenclature.filter(item => ['product', 'semifinished', 'sauce', 'prep'].includes(item.type)), [nomenclature])
+  const byName = useMemo(() => new Map(searchItems.map(item => [item.name.trim().toLowerCase(), item])), [searchItems])
+  const update = (field, value) => setForm(current => ({ ...current, [field]: value }))
+  const updateRow = (index, field, value) => update('rows', form.rows.map((row, i) => i === index ? { ...row, [field]: value } : row))
+  const updateFile = (field, value) => update('files', { ...form.files, [field]: value })
 
-function TextAreaField({ label, value, onChange, placeholder, minHeight }) {
-  return (
-    <label style={FIELD}>
-      <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>{label}</span>
-      <textarea value={value || ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} style={{ ...TEXTAREA, minHeight: minHeight || TEXTAREA.minHeight }} />
-    </label>
-  )
-}
-
-function inferType(item) {
-  if (!item) return 'product'
-  if (item.source === 'semifinished') return 'semifinished'
-  if (item.source === 'product') return 'product'
-  if (item.type) return item.type
-  if (item.composition || item.cookingMethod) return 'semifinished'
-  return 'product'
-}
-
-export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatureItem, onCancel, onSave }) {
-  const [form, setForm] = useState(() => normalizeTtk(initial || createEmptyReferenceTtk()))
-
-  const nomenclatureByName = useMemo(() => {
-    return new Map(
-      nomenclature
-        .filter(item => item.name || item.title)
-        .map(item => [String(item.name || item.title).trim().toLowerCase(), item]),
-    )
-  }, [nomenclature])
-
-  function update(field, value) {
-    setForm(current => ({ ...current, [field]: value }))
-  }
-
-  function updateRow(index, field, value) {
-    setForm(current => ({
-      ...current,
-      rows: current.rows.map((row, i) => i === index ? { ...row, [field]: value } : row),
-    }))
-  }
-
-  function selectNomenclature(index, name) {
-    const item = nomenclatureByName.get(name.trim().toLowerCase())
-
-    if (!item) {
-      updateRow(index, 'name', name)
-      return
-    }
-
-    setForm(current => ({
-      ...current,
-      rows: current.rows.map((row, i) => i === index ? {
-        ...row,
-        name: item.name || item.title,
-        type: inferType(item),
-      } : row),
-    }))
-  }
-
-  function addRowToNomenclature(row) {
-    if (!row.name?.trim() || !onSaveNomenclatureItem) return
-
-    const unit = row.qty?.replace(/[0-9.,\s]/g, '').trim() || 'г'
-
-    onSaveNomenclatureItem({
-      name: row.name.trim(),
-      type: row.type || 'product',
-      category: '',
-      unit,
-      description: '',
-      composition: '',
-      cookingMethod: '',
-      output: row.qty || '',
-    })
-  }
-
-  function saveForm() {
-    onSave(normalizeTtk(form))
+  function selectItem(index, name) {
+    const item = byName.get(name.trim().toLowerCase())
+    if (!item) return updateRow(index, 'name', name)
+    const isSemi = DETAIL_TYPES.includes(item.type)
+    update('rows', form.rows.map((row, i) => i === index ? { ...row, itemId: item.id, itemType: item.type, name: item.name, semifinished: isSemi ? item.composition : row.semifinished, description: isSemi ? item.cookingMethod : row.description } : row))
   }
 
   return (
-    <form onSubmit={e => { e.preventDefault(); saveForm() }} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#faf8f5' }}>
-        <div>
-          <h1 style={{ margin: '0 0 8px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>Создать карточку блюда</h1>
-          <div style={{ color: '#64748b', fontSize: 14 }}>Фото, состав блюда, описание, способ приготовления, стандарт блюда и подача. Без брутто/нетто.</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button>
-          <button type="submit" style={PRIMARY}>Сохранить</button>
-        </div>
-      </div>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop: 0, color: '#16332b' }}>Основное</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 180px', gap: 12 }}>
-          <TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} />
-          <TextField label="Выход" value={form.output} onChange={v => update('output', v)} placeholder="287 г" />
-          <TextField label="Время сборки" value={form.assemblyTime || form.time || ''} onChange={v => update('assemblyTime', v)} placeholder="2 мин" />
-          <TextField label="Категория" value={form.category} onChange={v => update('category', v)} placeholder="Салаты" />
-          <TextField label="Посуда" value={form.plate} onChange={v => update('plate', v)} placeholder="Тарелка 28 см" />
-          <label style={FIELD}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>Статус</span>
-            <select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width: '100%' }}>
-              <option value="draft">Черновик</option>
-              <option value="approved">Готова к печати</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop: 0, color: '#16332b' }}>Фото блюда</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,460px) 1fr', gap: 18, alignItems: 'center' }}>
-          <Photo file={form.photo} label="Большое фото подачи блюда" large />
-          <FileInput label="Загрузить фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} />
-        </div>
-      </section>
-
-      <section style={SECTION}>
-        <TextAreaField
-          label="Описание блюда"
-          value={form.dishDescription}
-          onChange={v => update('dishDescription', v)}
-          minHeight={90}
-          placeholder="Краткое гастрономическое описание для официанта и повара: вкус, текстура, акценты блюда."
-        />
-      </section>
-
-      <section style={SECTION}>
-        <datalist id="nomenclature-options">
-          {nomenclature.map(item => {
-            const type = inferType(item)
-            const label = TYPE_LABELS[type] || NOMENCLATURE_TYPE_LABELS?.[type] || type
-            return (
-              <option key={item.id || item.name} value={item.name || item.title}>
-                {label} · {item.unit || 'г'}
-              </option>
-            )
-          })}
-        </datalist>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <div>
-            <h2 style={{ margin: '0 0 4px', color: '#16332b' }}>Состав блюда</h2>
-            <div style={{ color: '#64748b', fontSize: 13 }}>Три колонки: наименование, тип и количество. Типы не выделяем яркими цветами.</div>
-          </div>
-          <button type="button" onClick={() => update('rows', [...(form.rows || []), { ...EMPTY_ROW }])} style={PRIMARY}>Добавить строку</button>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr>
-                {['Наименование', 'Тип', 'Кол-во', ''].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: 10, background: '#f8f6f2', borderBottom: '1px solid #ebe7de', color: '#6b7280' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(form.rows || []).map((row, index) => {
-                const cleanRow = normalizeRow(row)
-                const item = nomenclatureByName.get(cleanRow.name?.trim().toLowerCase())
-                const unit = item?.unit || 'г'
-
-                return (
-                  <tr key={index}>
-                    <td style={{ ...TD, width: '55%' }}>
-                      <input
-                        list="nomenclature-options"
-                        placeholder="Киноа отварная п/ф"
-                        value={cleanRow.name}
-                        onChange={e => selectNomenclature(index, e.target.value)}
-                        style={INPUT}
-                      />
-                      {cleanRow.name && !nomenclatureByName.has(cleanRow.name.trim().toLowerCase()) && (
-                        <button type="button" onClick={() => addRowToNomenclature(cleanRow)} style={{ ...SEL_ST, marginTop: 6, fontSize: 11 }}>
-                          Добавить в номенклатуру
-                        </button>
-                      )}
-                    </td>
-                    <td style={{ ...TD, width: '18%' }}>
-                      <select value={cleanRow.type} onChange={e => updateRow(index, 'type', e.target.value)} style={{ ...SEL_ST, width: '100%', color: '#6b7280', fontWeight: 700 }}>
-                        <option value="product">Товар</option>
-                        <option value="semifinished">П/Ф</option>
-                        <option value="sauce">Соус</option>
-                        <option value="prep">Заготовка</option>
-                      </select>
-                    </td>
-                    <td style={{ ...TD, width: '20%' }}>
-                      <input
-                        placeholder={`80 ${unit}`}
-                        value={cleanRow.qty}
-                        onChange={e => updateRow(index, 'qty', e.target.value)}
-                        style={INPUT}
-                      />
-                    </td>
-                    <td style={{ ...TD, width: '7%' }}>
-                      <button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>×</button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop: 0, color: '#16332b' }}>Способ приготовления</h2>
-        <TextAreaField
-          label="Текст для повара"
-          value={form.technology}
-          onChange={v => update('technology', v)}
-          placeholder="1. Подготовить ингредиенты согласно рецептуре.\n2. Собрать блюдо в нужной последовательности.\n3. Проверить внешний вид, текстуру и температуру подачи."
-        />
-      </section>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop: 0, color: '#16332b' }}>Стандарт блюда</h2>
-        <TextAreaField
-          label="Критические точки"
-          value={form.standard}
-          onChange={v => update('standard', v)}
-          placeholder="• Текстура должна соответствовать стандарту.\n• Зелень свежая, без потемнения.\n• Соус не должен растекаться по борту тарелки.\n• Блюдо подаётся сразу после приготовления."
-        />
-      </section>
-
-      <section style={SECTION}>
-        <h2 style={{ marginTop: 0, color: '#16332b' }}>Подача</h2>
-        <TextAreaField
-          label="Финальная сервировка"
-          value={form.serving}
-          onChange={v => update('serving', v)}
-          placeholder="Описание расположения ингредиентов, декора, посуды и финального внешнего вида блюда."
-        />
-      </section>
+    <form onSubmit={e => { e.preventDefault(); onSave(form) }} style={{ display:'grid', gap:16 }}>
+      <section style={SECTION}><h2 style={{ marginTop:0 }}>Основное</h2><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))', gap:12 }}><TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} /><TextField label="Код ТТК" value={form.ttkCode} onChange={v => update('ttkCode', v)} /><TextField label="Категория" value={form.category} onChange={v => update('category', v)} /><TextField label="Цех" value={form.station} onChange={v => update('station', v)} /><TextField label="Выход" value={form.output} onChange={v => update('output', v)} /><Field label="Статус"><select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width:'100%' }}><option value="draft">Черновик</option><option value="in_progress">В работе</option><option value="standard">Эталон</option></select></Field></div></section>
+      <section style={SECTION}><h2 style={{ marginTop:0 }}>Фото</h2><FileInput label="Главное фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} /></section>
+      <section style={SECTION}><datalist id="ttk-items">{searchItems.map(item => <option key={`${item.type}-${item.id}`} value={item.name}>{ITEM_TYPE_LABELS[item.type]} · {item.unit || item.output}</option>)}</datalist><div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}><h2 style={{ margin:0 }}>Таблица компонентов</h2><button type="button" onClick={() => update('rows', [...form.rows, { ...EMPTY_ROW, id: crypto.randomUUID?.() || String(Date.now()) }])} style={PRIMARY}>Добавить строку</button></div><div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}><thead><tr>{['Кол-во','Наименование','П/Ф','Описание',''].map(h => <th key={h} style={TH}>{h}</th>)}</tr></thead><tbody>{form.rows.map((row, index) => <tr key={row.id || index}><td style={TD}><input value={row.qty} onChange={e => updateRow(index, 'qty', e.target.value)} style={INPUT} /></td><td style={TD}><input list="ttk-items" value={row.name} onChange={e => selectItem(index, e.target.value)} style={INPUT} />{row.itemType && <div style={{ color:'#64748b', fontSize:11 }}>{ITEM_TYPE_LABELS[row.itemType]}</div>}</td><td style={TD}><textarea value={row.semifinished} onChange={e => updateRow(index, 'semifinished', e.target.value)} style={AREA} /></td><td style={TD}><textarea value={row.description} onChange={e => updateRow(index, 'description', e.target.value)} style={AREA} /></td><td style={TD}><button type="button" onClick={() => update('rows', form.rows.filter((_, i) => i !== index))} style={SEL_ST}>×</button></td></tr>)}</tbody></table></div></section>
+      <section style={SECTION}><TextAreaField label="Краткое описание блюда" value={form.description} onChange={v => update('description', v)} /></section><section style={SECTION}><TextAreaField label="Способ приготовления" value={form.cookingMethod} onChange={v => update('cookingMethod', v)} /></section><section style={SECTION}><TextAreaField label="Оформление и подача" value={form.plating} onChange={v => update('plating', v)} /></section><section style={SECTION}><TextAreaField label="Контроль качества" value={form.qualityControl} onChange={v => update('qualityControl', v)} /></section><section style={SECTION}><TextAreaField label="Типичные ошибки" value={form.typicalMistakes} onChange={v => update('typicalMistakes', v)} /></section>
+      <section style={SECTION}><h2 style={{ marginTop:0 }}>Файлы</h2><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:12 }}><FileInput label="PDF" accept="application/pdf,.pdf" value={form.files?.pdf} onChange={v => updateFile('pdf', v)} /><FileInput label="XLSX" accept=".xlsx,.xls" value={form.files?.xlsx} onChange={v => updateFile('xlsx', v)} /></div></section>
+      <div style={{ display:'flex', gap:8 }}><button type="submit" style={PRIMARY}>Сохранить</button><button type="button" onClick={onCancel} style={SEL_ST}>Отмена</button></div>
     </form>
   )
 }
 
-const TD = { padding: 8, borderBottom: '1px solid #f0ede6', verticalAlign: 'top' }
-
-export function ReferenceTtkView({ ttk: rawTtk, onBack, onEdit, onDuplicate, onDelete }) {
-  const ttk = normalizeTtk(rawTtk)
-  const html = useMemo(() => makePrintableHtml(ttk), [ttk])
-
-  if (!ttk) return null
-
-  function downloadJson() {
-    downloadBlob(`${ttk.title || 'dish-card'}.json`, JSON.stringify(ttk, null, 2), 'application/json')
-  }
-
-  function printTtk() {
-    const win = window.open('', '_blank')
-    win.document.write(html)
-    win.document.close()
-    win.focus()
-    win.print()
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div style={{ ...SECTION, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#faf8f5' }}>
-        <div>
-          <button onClick={onBack} style={{ ...SEL_ST, marginBottom: 12 }}>← Карточки блюд</button>
-          <div><TtkStatus status={ttk.status} /></div>
-          <h1 style={{ margin: '10px 0 6px', fontSize: 30, color: '#16332b', letterSpacing: '-.03em' }}>{ttk.title || 'Без названия'}</h1>
-          <div style={{ color: '#64748b' }}>
-            Выход: {ttk.output || '—'} · сборка: {ttk.assemblyTime || ttk.time || '—'} · строк: {ttk.rows?.length || 0} · обновлено {formatDate(ttk.updatedAt)}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button onClick={onEdit} style={PRIMARY}>Редактировать</button>
-          <button onClick={printTtk} style={SEL_ST}>Скачать / Печать</button>
-          <button onClick={downloadJson} style={SEL_ST}>Скачать JSON</button>
-          <button onClick={onDuplicate} style={SEL_ST}>Дублировать</button>
-          <button onClick={onDelete} style={{ ...SEL_ST, color: '#dc2626', borderColor: '#fecaca' }}>Удалить</button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'center', overflow: 'auto', padding: '16px 0 32px' }}>
-        <PrintablePage ttk={ttk} />
-      </div>
-    </div>
-  )
+export function ReferenceTtkView({ ttk, onBack, onEdit, onDuplicate, onDelete }) {
+  return <div style={{ display:'grid', gap:16 }}><section className="no-print" style={{ ...SECTION, display:'flex', justifyContent:'space-between', gap:12 }}><div><button onClick={onBack} style={SEL_ST}>← Назад</button><h1>{ttk.title || 'Без названия'}</h1><StatusTag status={ttk.status} /></div><div style={{ display:'flex', gap:8, flexWrap:'wrap' }}><button onClick={onEdit} style={PRIMARY}>Редактировать</button><button onClick={() => openPrintableTtk(ttk)} style={SEL_ST}>Скачать ТТК / Печать</button><button onClick={() => downloadBlob(`${ttk.title || 'ttk'}.json`, JSON.stringify(ttk, null, 2), 'application/json')} style={SEL_ST}>JSON</button><button onClick={onDuplicate} style={SEL_ST}>Дублировать</button><button onClick={onDelete} style={{ ...SEL_ST, color:'#dc2626' }}>Удалить</button></div></section><PrintablePage ttk={ttk} /></div>
 }
 
-function PrintablePage({ ttk: rawTtk }) {
-  const ttk = normalizeTtk(rawTtk)
-
-  return (
-    <article style={PRINT_PAGE}>
-      <div style={PRINT_BG_1} />
-      <div style={PRINT_BG_2} />
-
-      <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '7mm' }}>
-        <div style={{ textAlign: 'center', fontSize: 10, letterSpacing: '.22em', textTransform: 'uppercase', color: '#7a6f62', fontWeight: 800 }}>
-          Клёво · стандарт блюда
-        </div>
-
-        <h1 style={PRINT_TITLE}>{ttk.title || 'Название блюда'}</h1>
-
-        <div style={PRINT_PHOTO_WRAP}>
-          {ttk.photo?.dataUrl ? (
-            <img src={ttk.photo.dataUrl} alt={ttk.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b8174', background: '#eee7dc', fontSize: 18 }}>
-              Фото блюда
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          <MetaCard label="Выход" value={ttk.output || '—'} />
-          <MetaCard label="Сборка" value={ttk.assemblyTime || ttk.time || '—'} />
-          <MetaCard label="Категория" value={ttk.category || '—'} />
-          <MetaCard label="Посуда" value={ttk.plate || '—'} />
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '.95fr 1.05fr', gap: 12, alignItems: 'start' }}>
-          <PrintBlock title="Описание блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.dishDescription)}</div>
-          </PrintBlock>
-
-          <PrintBlock title="Состав блюда">
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12.8, lineHeight: 1.3 }}>
-              <thead>
-                <tr>
-                  <th style={{ ...PRINT_TH, width: '58%' }}>Наименование</th>
-                  <th style={{ ...PRINT_TH, width: '18%', textAlign: 'center' }}>Тип</th>
-                  <th style={{ ...PRINT_TH, width: '24%', textAlign: 'center' }}>Кол-во</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map((row, index) => {
-                  const cleanRow = normalizeRow(row)
-                  const badge = getTypeBadge(cleanRow.type)
-
-                  return (
-                    <tr key={index}>
-                      <td style={{ ...PRINT_TD, fontWeight: 800 }}>{cleanRow.name}</td>
-                      <td style={{ ...PRINT_TD, textAlign: 'center', color: '#6b7280', fontWeight: 600 }}>{badge.label}</td>
-                      <td style={{ ...PRINT_TD, textAlign: 'center', fontWeight: 900 }}>{cleanRow.qty}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </PrintBlock>
-
-          <div style={{ gridColumn: '1 / -1' }}>
-            <PrintBlock title="Способ приготовления">
-              <div style={PRINT_TEXT}>{textOrDash(ttk.technology)}</div>
-            </PrintBlock>
-          </div>
-
-          <PrintBlock title="Стандарт блюда">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.standard)}</div>
-          </PrintBlock>
-
-          <PrintBlock title="Подача">
-            <div style={PRINT_TEXT}>{textOrDash(ttk.serving)}</div>
-          </PrintBlock>
-        </div>
-      </div>
-    </article>
-  )
+function PrintablePage({ ttk }) {
+  return <article className="print-page" style={{ width:'210mm', minHeight:'297mm', background:'#fff', boxShadow:'0 24px 70px rgba(15,23,42,.16)', padding:'12mm', margin:'0 auto' }}><h1 style={{ textAlign:'center', textTransform:'uppercase' }}>{ttk.title || 'Название блюда'}</h1><table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}><thead><tr>{['Кол-во','Наименование','П/Ф','Описание'].map(h => <th key={h} style={PRINT_CELL}>{h}</th>)}</tr></thead><tbody>{ttk.rows.map(row => <tr key={row.id}><td style={PRINT_CELL}>{row.qty}</td><td style={PRINT_CELL}>{row.name}</td><td style={PRINT_CELL}>{row.semifinished}</td><td style={PRINT_CELL}>{row.description}</td></tr>)}</tbody></table><div style={{ margin:'10px 0', fontWeight:900 }}>Выход: {ttk.output || '—'}</div>{ttk.photo?.dataUrl && <img src={ttk.photo.dataUrl} alt={ttk.title} style={{ width:'100%', maxHeight:'70mm', objectFit:'cover', border:'1px solid #111827' }} />}<div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:10 }}>{[['Описание', ttk.description], ['Способ приготовления', ttk.cookingMethod], ['Оформление', ttk.plating], ['Контроль качества', ttk.qualityControl], ['Типичные ошибки', ttk.typicalMistakes]].map(([label, text]) => <section key={label} style={{ border:'1px solid #111827', padding:8 }}><b>{label}</b><div style={{ whiteSpace:'pre-wrap', fontSize:11 }}>{text || '—'}</div></section>)}</div></article>
 }
 
-function MetaCard({ label, value }) {
-  return (
-    <div style={META_BOX}>
-      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.12em', color: '#8b8174', fontWeight: 800, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 14, color: '#1f2937', fontWeight: 900 }}>{value}</div>
-    </div>
-  )
-}
-
-function PrintBlock({ title, children }) {
-  return (
-    <section style={PRINT_BLOCK}>
-      <h2 style={PRINT_H2}>{title}</h2>
-      {children}
-    </section>
-  )
-}
-
-const PRINT_PAGE = {
-  width: '210mm',
-  minHeight: '297mm',
-  background: '#faf8f5',
-  boxShadow: '0 24px 70px rgba(15,23,42,.16)',
-  padding: '16mm',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '7mm',
-  position: 'relative',
-  overflow: 'hidden',
-  fontFamily: 'Inter, Manrope, Arial, sans-serif',
-}
-
-const PRINT_BG_1 = {
-  position: 'absolute',
-  width: 260,
-  height: 260,
-  borderRadius: 999,
-  background: 'rgba(22,51,43,.055)',
-  top: -80,
-  left: -80,
-}
-
-const PRINT_BG_2 = {
-  position: 'absolute',
-  width: 280,
-  height: 280,
-  borderRadius: 999,
-  background: 'rgba(185,145,80,.08)',
-  top: -100,
-  right: -120,
-}
-
-const PRINT_TITLE = {
-  margin: 0,
-  textAlign: 'center',
-  fontSize: 30,
-  lineHeight: 1.08,
-  color: '#16332b',
-  letterSpacing: '-.03em',
-  fontWeight: 900,
-}
-
-const PRINT_PHOTO_WRAP = {
-  width: '100%',
-  height: '104mm',
-  border: 'none',
-  borderRadius: 24,
-  overflow: 'hidden',
-  boxShadow: '0 16px 42px rgba(31,41,55,.14)',
-  background: '#eee7dc',
-}
-
-const META_BOX = {
-  background: '#ffffff',
-  border: '1px solid #ece8df',
-  borderRadius: 16,
-  padding: '10px 12px',
-  boxShadow: '0 4px 14px rgba(31,41,55,.04)',
-  minWidth: 0,
-}
-
-const PRINT_BLOCK = {
-  background: '#fff',
-  border: '1px solid #ece8df',
-  borderRadius: 20,
-  padding: 16,
-  boxShadow: '0 8px 24px rgba(31,41,55,.045)',
-}
-
-const PRINT_H2 = {
-  margin: '0 0 12px',
-  fontSize: 17,
-  fontWeight: 800,
-  color: '#16332b',
-  letterSpacing: '-.01em',
-  textTransform: 'none',
-}
-
-const PRINT_TH = {
-  padding: '9px 8px',
-  background: '#f8f6f2',
-  borderBottom: '1px solid #ebe7de',
-  border: 'none',
-  textAlign: 'left',
-  fontSize: 10,
-  color: '#8b8174',
-  fontWeight: 800,
-  textTransform: 'uppercase',
-  letterSpacing: '.08em',
-}
-
-const PRINT_TD = {
-  padding: '10px 8px',
-  borderBottom: '1px solid #f0ede6',
-  borderLeft: 'none',
-  borderRight: 'none',
-  borderTop: 'none',
-  verticalAlign: 'middle',
-  wordBreak: 'break-word',
-  fontSize: 12.8,
-  color: '#1f2937',
-}
-
-const PRINT_TEXT = {
-  fontSize: 13.5,
-  lineHeight: 1.65,
-  color: '#374151',
-  whiteSpace: 'pre-wrap',
-}
+const TH = { textAlign:'left', padding:8, background:'#f8fafc', border:'1px solid #e5e7eb' }
+const TD = { padding:6, border:'1px solid #e5e7eb', verticalAlign:'top' }
+const AREA = { ...INPUT, minHeight:64, resize:'vertical', fontFamily:'inherit' }
+const PRINT_CELL = { border:'1px solid #111827', padding:6, verticalAlign:'top' }
