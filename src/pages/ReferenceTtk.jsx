@@ -885,7 +885,10 @@ function saveForm() {
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Фото блюда</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,460px) 1fr', gap: 18, alignItems: 'center' }}>
           <Photo file={form.photo} label="Большое фото подачи блюда" large />
-          <FileInput label="Загрузить фото блюда" accept="image/*" value={form.photo} onChange={v => update('photo', v)} />
+          <FileInput label="Загрузить фото блюда" accept="image/*" value={form.photo} onChange={v => {
+            update('photo', v)
+            update('image', v?.dataUrl || '')
+          }} />
         </div>
       </section>
 
