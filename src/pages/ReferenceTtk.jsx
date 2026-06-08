@@ -224,6 +224,13 @@ function hasText(value) {
   return Boolean(String(value || '').trim())
 }
 
+function normalizeAssemblyTime(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (/^\d+([.,]\d+)?$/.test(text)) return `${text} мин`
+  return text
+}
+
 function getFilledRows(rows = []) {
   return rows
     .map(normalizeRow)
@@ -268,19 +275,20 @@ function extractJsonObject(value) {
 
 function normalizeAiResponse(payload) {
   const parsed = extractJsonObject(payload?.output_text || payload?.text || payload)
-  const candidate = parsed?.cookingMethod || parsed?.dishStandard || parsed?.serving
+  const candidate = parsed?.description || parsed?.cookingMethod || parsed?.dishStandard || parsed?.serving
     ? parsed
     : extractJsonObject(parsed?.choices?.[0]?.message?.content || parsed?.output?.[0]?.content?.[0]?.text)
 
   if (!candidate) return null
 
   const result = {
+    description: String(candidate.description || '').trim(),
     cookingMethod: String(candidate.cookingMethod || '').trim(),
     dishStandard: String(candidate.dishStandard || '').trim(),
     serving: String(candidate.serving || '').trim(),
   }
 
-  return result.cookingMethod && result.dishStandard && result.serving ? result : null
+  return result.description && result.cookingMethod && result.dishStandard && result.serving ? result : null
 }
 
 function getAiErrorMessage(error) {
@@ -358,7 +366,7 @@ function makePrintableHtml(sourceTtk) {
   .page:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 10% 12%,rgba(22,51,43,.06),transparent 25%),radial-gradient(circle at 88% 4%,rgba(185,145,80,.08),transparent 22%);pointer-events:none}
   .content{position:relative;z-index:1;display:flex;flex-direction:column;gap:4mm}
   .kicker{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#7a6f62;font-weight:800;text-align:center}
-  h1{margin:0;text-align:center;font-size:25px;line-height:1.08;color:#16332b;letter-spacing:-.03em;font-weight:900}
+  h1{margin:0;text-align:center;font-size:30px;line-height:1.08;color:#16332b;letter-spacing:-.03em;font-weight:900}
   .photo-wrap{width:100%;height:78mm;overflow:hidden;border-radius:24px;box-shadow:0 16px 42px rgba(31,41,55,.14);background:#eee7dc}
   .dish-photo{width:100%;height:100%;object-fit:cover;display:block}
   .photo-placeholder{height:100%;display:flex;align-items:center;justify-content:center;color:#8b8174;font-size:18px;background:#eee7dc}
@@ -368,7 +376,7 @@ function makePrintableHtml(sourceTtk) {
   .meta-value{font-size:14px;color:#1f2937;font-weight:900}
   .grid{display:grid;grid-template-columns:.95fr 1.05fr;gap:12px;align-items:start}
   .block{background:#fff;border:1px solid #ece8df;border-radius:20px;padding:10px;box-shadow:0 8px 24px rgba(31,41,55,.045)}
-  h2{margin:0 0 12px;font-size:14px;color:#16332b;letter-spacing:-.01em}
+  h2{margin:0 0 12px;font-size:17px;color:#16332b;letter-spacing:-.01em}
   .text{font-size:11.5px;line-height:1.65;color:#374151;white-space:pre-wrap}
   table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;line-height:1.3}
   th{padding:9px 8px;background:#f8f6f2;border-bottom:1px solid #ebe7de;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8b8174}
@@ -564,7 +572,7 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', gap: 18, alignItems: 'start' }}>
-        <aside style={{ ...SECTION, padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <aside style={{ ...SECTION, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <div>
               <h2 style={{ margin: 0, color: '#16332b', fontSize: 18 }}>Папки</h2>
@@ -624,7 +632,7 @@ export function ReferenceTtkList({ items, onOpen, onEdit, onCreate, onDownload }
                         <TtkStatus status={item.status} />
                       </div>
                       <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.7 }}>
-                        Выход: {item.yield || item.output || '—'}<br />
+                        Выход: {item.output || '—'}<br />
                         Строк: {item.rows?.length || 0} · обновлено {formatDate(item.updatedAt)}
                       </div>
                       <label style={{ ...FIELD, marginTop: 12 }}>
@@ -773,6 +781,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
 
       setForm(current => ({
         ...current,
+        description: aiText.description,
         cookingMethod: aiText.cookingMethod,
         dishStandard: aiText.dishStandard,
         serving: aiText.serving,
@@ -797,7 +806,10 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
   }
 
   function saveForm() {
-    onSave(form)
+    onSave({
+      ...form,
+      assemblyTime: normalizeAssemblyTime(form.assemblyTime || form.time || ''),
+    })
   }
 
   return (

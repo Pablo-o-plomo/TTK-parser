@@ -87,9 +87,10 @@ function makePrompt(ttkData) {
 На основе данных ТТК создай профессиональные тексты для карточки блюда.
 
 Нужно заполнить:
-1. Способ приготовления
-2. Стандарт блюда
-3. Подача
+1. Описание блюда
+2. Способ приготовления
+3. Стандарт блюда
+4. Подача
 
 Правила:
 - Пиши на русском языке.
@@ -106,7 +107,7 @@ function makePrompt(ttkData) {
 
 Формат ответа:
 {
-  "description": "краткое описание блюда",
+  "description": "краткое гастрономическое описание блюда",
   "cookingMethod": "текст",
   "dishStandard": "текст",
   "serving": "текст"
@@ -156,12 +157,13 @@ function normalizeAiResult(value) {
   if (!parsed) return null
 
   const result = {
+    description: normalizeText(parsed.description),
     cookingMethod: normalizeText(parsed.cookingMethod),
     dishStandard: normalizeText(parsed.dishStandard),
     serving: normalizeText(parsed.serving),
   }
 
-  return result.cookingMethod && result.dishStandard && result.serving ? result : null
+  return result.description && result.cookingMethod && result.dishStandard && result.serving ? result : null
 }
 
 async function callOpenAi(ttkData) {
@@ -191,11 +193,12 @@ async function callOpenAi(ttkData) {
             type: 'object',
             additionalProperties: false,
             properties: {
+              description: { type: 'string' },
               cookingMethod: { type: 'string' },
               dishStandard: { type: 'string' },
               serving: { type: 'string' },
             },
-            required: ['cookingMethod', 'dishStandard', 'serving'],
+            required: ['description', 'cookingMethod', 'dishStandard', 'serving'],
           },
         },
       },
