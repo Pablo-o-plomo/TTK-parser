@@ -168,22 +168,47 @@ function normalizeRow(row = {}) {
   return {
     ...EMPTY_ROW,
     ...row,
+    id: row.id || '',
     name: row.name || row.title || '',
     type: row.type || row.source || (row.semifinished ? 'semifinished' : 'product'),
     qty: row.qty || row.quantity || row.amount || '',
+    quantity: row.quantity || row.qty || row.amount || '',
   }
 }
 
 function normalizeTtk(ttk = {}) {
+  const rows = (ttk.rows?.length ? ttk.rows : ttk.ingredients?.length ? ttk.ingredients : [EMPTY_ROW]).map(normalizeRow)
+  const image = typeof ttk.image === 'string' ? ttk.image : ttk.image?.dataUrl || ttk.photo?.dataUrl || ''
+  const description = ttk.description || ttk.dishDescription || ttk.menuDescription || ttk.descriptionText || ''
+  const cookingMethod = ttk.cookingMethod || ttk.technology || ttk.preparationMethod || ttk.method || ''
+  const dishStandard = ttk.dishStandard || ttk.standard || ttk.qualityStandard || ''
+  const dishware = ttk.dishware || ttk.plate || ttk.dishwareName || ''
+  const yieldValue = ttk.yield || ttk.output || ''
+
   return {
     ...ttk,
-    rows: (ttk.rows?.length ? ttk.rows : [EMPTY_ROW]).map(normalizeRow),
-    technology: ttk.technology || ttk.cookingMethod || ttk.description || '',
-    serving: ttk.serving || ttk.presentation || '',
-    dishDescription: ttk.dishDescription || ttk.menuDescription || ttk.descriptionText || '',
-    standard: ttk.standard || ttk.qualityStandard || '',
+    image,
+    photo: ttk.photo || (image ? { dataUrl: image } : null),
+    yield: yieldValue,
+    output: yieldValue,
+    assemblyTime: ttk.assemblyTime || ttk.time || '',
     category: ttk.category || '',
-    plate: ttk.plate || ttk.dishware || '',
+    dishware,
+    plate: dishware,
+    description,
+    dishDescription: description,
+    cookingMethod,
+    technology: cookingMethod,
+    dishStandard,
+    standard: dishStandard,
+    serving: ttk.serving || ttk.presentation || '',
+    rows,
+    ingredients: rows.map(row => ({
+      id: row.id || '',
+      name: row.name || '',
+      type: row.type || 'product',
+      quantity: row.quantity || row.qty || '',
+    })),
   }
 }
 
@@ -210,11 +235,11 @@ function makeAiDishPayload(ttk) {
 
   return {
     title: normalized.title || '',
-    yield: normalized.output || '',
+    yield: normalized.yield || '',
     assemblyTime: normalized.assemblyTime || normalized.time || '',
     category: normalized.category || '',
-    dishware: normalized.plate || '',
-    ingredients: getFilledRows(normalized.rows).map(row => ({
+    dishware: normalized.dishware || '',
+    ingredients: getFilledRows(normalized.ingredients).map(row => ({
       name: row.name,
       type: getTypeBadge(row.type).label,
       quantity: row.qty || '',
@@ -726,7 +751,7 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
   }
 
   function hasFilledAiTextBlocks() {
-    return hasText(form.technology) || hasText(form.standard) || hasText(form.serving)
+    return hasText(form.cookingMethod) || hasText(form.dishStandard) || hasText(form.serving)
   }
 
   async function fillTextBlocksWithAi() {
@@ -748,8 +773,8 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
 
       setForm(current => ({
         ...current,
-        technology: aiText.cookingMethod,
-        standard: aiText.dishStandard,
+        cookingMethod: aiText.cookingMethod,
+        dishStandard: aiText.dishStandard,
         serving: aiText.serving,
       }))
       setAiStatus('success')
@@ -817,10 +842,10 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Основное</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 180px', gap: 12 }}>
           <TextField label="Название блюда" value={form.title} onChange={v => update('title', v)} />
-          <TextField label="Выход" value={form.output} onChange={v => update('output', v)} placeholder="287 г" />
+          <TextField label="Выход" value={form.yield} onChange={v => update('yield', v)} placeholder="287 г" />
           <TextField label="Время сборки" value={form.assemblyTime || form.time || ''} onChange={v => update('assemblyTime', v)} placeholder="2 мин" />
           <TextField label="Категория" value={form.category} onChange={v => update('category', v)} placeholder="Салаты" />
-          <TextField label="Посуда" value={form.plate} onChange={v => update('plate', v)} placeholder="Тарелка 28 см" />
+          <TextField label="Посуда" value={form.dishware} onChange={v => update('dishware', v)} placeholder="Тарелка 28 см" />
           <label style={FIELD}>
             <span style={{ fontSize: 12, fontWeight: 800, color: '#475569' }}>Статус</span>
             <select value={form.status} onChange={e => update('status', e.target.value)} style={{ ...SEL_ST, width: '100%' }}>
@@ -842,8 +867,8 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
       <section style={SECTION}>
         <TextAreaField
           label="Описание блюда"
-          value={form.dishDescription}
-          onChange={v => update('dishDescription', v)}
+          value={form.description}
+          onChange={v => update('description', v)}
           minHeight={90}
           placeholder="Краткое гастрономическое описание для официанта и повара: вкус, текстура, акценты блюда."
         />
@@ -932,8 +957,8 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Способ приготовления</h2>
         <TextAreaField
           label="Текст для повара"
-          value={form.technology}
-          onChange={v => update('technology', v)}
+          value={form.cookingMethod}
+          onChange={v => update('cookingMethod', v)}
           placeholder="1. Подготовить ингредиенты согласно рецептуре.\n2. Собрать блюдо в нужной последовательности.\n3. Проверить внешний вид, текстуру и температуру подачи."
         />
       </section>
@@ -942,8 +967,8 @@ export function ReferenceTtkForm({ initial, nomenclature = [], onSaveNomenclatur
         <h2 style={{ marginTop: 0, color: '#16332b' }}>Стандарт блюда</h2>
         <TextAreaField
           label="Критические точки"
-          value={form.standard}
-          onChange={v => update('standard', v)}
+          value={form.dishStandard}
+          onChange={v => update('dishStandard', v)}
           placeholder="• Текстура должна соответствовать стандарту.\n• Зелень свежая, без потемнения.\n• Соус не должен растекаться по борту тарелки.\n• Блюдо подаётся сразу после приготовления."
         />
       </section>
