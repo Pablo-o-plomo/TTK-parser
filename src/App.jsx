@@ -4,6 +4,7 @@ import { createEmptyReferenceTtk, useReferenceTtkStore } from './storage/referen
 import { useProductsStore } from './storage/productsStore.js'
 import { useSemifinishedStore } from './storage/semifinishedStore.js'
 import { makeBackup, normalizeBackup } from './storage/backupStore.js'
+import { SYSTEM_UNGROUPED_GROUP_ID, useTtkGroupsStore } from './storage/ttkGroupsStore.js'
 import { ReferenceTtkForm, ReferenceTtkList, ReferenceTtkView, openPrintableTtk } from './pages/ReferenceTtk.jsx'
 import { CatalogPage } from './pages/Catalogs.jsx'
 
@@ -33,9 +34,9 @@ function readFileAsText(file) {
   })
 }
 
-function Settings({ products, semifinished, referenceTtks, onRestore, onClear }) {
+function Settings({ products, semifinished, referenceTtks, ttkGroups, onRestore, onClear }) {
   const [message, setMessage] = useState('')
-  const backup = makeBackup({ products, semifinished, referenceTtks })
+  const backup = makeBackup({ products, semifinished, referenceTtks, ttkGroups })
 
   async function importBackup(file) {
     if (!file) return
@@ -47,7 +48,6 @@ function Settings({ products, semifinished, referenceTtks, onRestore, onClear })
       setMessage('Не удалось восстановить базу. Проверьте JSON-файл резервной копии.')
     }
   }
-
   return (
     <div style={{ display:'grid', gap:16, maxWidth:920 }}>
       <section style={CARD}>
@@ -63,7 +63,7 @@ function Settings({ products, semifinished, referenceTtks, onRestore, onClear })
       </section>
       <section style={CARD}>
         <h2 style={{ marginTop:0 }}>Резервное копирование</h2>
-        <p style={{ color:'#64748b' }}>Экспорт включает products, semifinished, referenceTtks, exportedAt и version. Импорт полностью восстанавливает базу.</p>
+        <p style={{ color:'#64748b' }}>Экспорт включает products, semifinished, referenceTtks, ttkGroups, exportedAt и version. Импорт полностью восстанавливает базу.</p>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           <button onClick={() => downloadJson('klevo-ttk-backup.json', backup)} style={BTN}>Скачать всю базу JSON</button>
           <label style={BTN}>Загрузить базу JSON<input type="file" accept=".json,application/json" onChange={e => importBackup(e.target.files?.[0])} style={{ display:'none' }} /></label>
@@ -79,9 +79,10 @@ export default function App() {
   const [section, setSection] = useState('ttk')
   const [selectedId, setSelectedId] = useState(null)
   const [editing, setEditing] = useState(null)
-  const { items: referenceTtks, saveTtk, deleteTtk, duplicateTtk, replaceItems: replaceReferenceTtks } = useReferenceTtkStore()
+  const { items: referenceTtks, saveTtk, deleteTtk, updateTtkPlacement, moveTtksFromGroup, duplicateTtk, replaceItems: replaceReferenceTtks } = useReferenceTtkStore()
   const { items: products, saveItem: saveProduct, deleteItem: deleteProduct, importItems: importProducts, replaceItems: replaceProducts } = useProductsStore()
   const { items: semifinished, saveItem: saveSemifinished, deleteItem: deleteSemifinished, importItems: importSemifinished, replaceItems: replaceSemifinished } = useSemifinishedStore()
+  const { items: ttkGroups, createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, deleteGroup, replaceItems: replaceTtkGroups } = useTtkGroupsStore()
   const nomenclature = useMemo(() => [...products.map(item => ({ ...item, type: 'product' })), ...semifinished], [products, semifinished])
   const selected = useMemo(() => referenceTtks.find(item => item.id === selectedId), [referenceTtks, selectedId])
   const pageTitle = NAV_ITEMS.find(item => item.id === section)?.label || '🍽 Эталонные ТТК'
@@ -108,9 +109,19 @@ export default function App() {
     replaceProducts(payload.products)
     replaceSemifinished(payload.semifinished)
     replaceReferenceTtks(payload.referenceTtks)
+    replaceTtkGroups(payload.ttkGroups || [])
     setSelectedId(null)
     setEditing(null)
     setSection('ttk')
+  }
+
+  function moveTtk(id, groupId, order, options = {}) {
+    if (options.moveGroupCardsToUngrouped) {
+      moveTtksFromGroup(groupId, SYSTEM_UNGROUPED_GROUP_ID)
+      return
+    }
+    if (!id) return
+    updateTtkPlacement(id, { groupId: groupId || SYSTEM_UNGROUPED_GROUP_ID, order: order ?? Date.now() })
   }
 
   return (
@@ -127,7 +138,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ padding:16, borderTop:'1px solid rgba(255,255,255,.08)', color:'#94a3b8', fontSize:12, lineHeight:1.7 }}>
-          {products.length} товаров<br />{semifinished.length} полуфабрикатов<br />{referenceTtks.length} эталонных ТТК
+          {products.length} товаров<br />{semifinished.length} полуфабрикатов<br />{referenceTtks.length} эталонных ТТК<br />{ttkGroups.length} групп
         </div>
       </aside>
       <main style={{ flex:1, minWidth:0 }}>
@@ -138,10 +149,10 @@ export default function App() {
         <div style={{ padding:28 }}>
           {section === 'products' && <CatalogPage mode="products" items={products} products={products} onSave={saveProduct} onDelete={deleteProduct} onImport={importProducts} />}
           {section === 'semifinished' && <CatalogPage mode="semifinished" items={semifinished} products={products} onSave={saveSemifinished} onDelete={deleteSemifinished} onImport={importSemifinished} />}
-          {section === 'ttk' && <ReferenceTtkList items={referenceTtks} onOpen={openTtk} onEdit={item => { setEditing(item); setSection('ttk-create') }} onCreate={createTtk} onDelete={deleteTtk} onPrint={openPrintableTtk} />}
-          {section === 'ttk-create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} onCancel={() => setSection('ttk')} onSave={saveReferenceTtk} />}
+          {section === 'ttk' && <ReferenceTtkList items={referenceTtks} groups={ttkGroups} groupActions={{ createGroup, updateGroup, toggleExpanded, moveGroup, duplicateGroup, deleteGroup }} onMoveTtk={moveTtk} onOpen={openTtk} onEdit={item => { setEditing(item); setSection('ttk-create') }} onCreate={createTtk} onDelete={deleteTtk} onPrint={openPrintableTtk} />}
+          {section === 'ttk-create' && <ReferenceTtkForm initial={editing} nomenclature={nomenclature} groups={ttkGroups} onCancel={() => setSection('ttk')} onSave={saveReferenceTtk} />}
           {section === 'ttk-view' && selected && <ReferenceTtkView ttk={selected} onBack={() => setSection('ttk')} onEdit={() => { setEditing(selected); setSection('ttk-create') }} onDuplicate={() => openTtk(duplicateTtk(selected.id))} onDelete={() => { deleteTtk(selected.id); setSection('ttk') }} />}
-          {section === 'settings' && <Settings products={products} semifinished={semifinished} referenceTtks={referenceTtks} onRestore={restoreBackup} onClear={() => restoreBackup({ products: [], semifinished: [], referenceTtks: [] })} />}
+          {section === 'settings' && <Settings products={products} semifinished={semifinished} referenceTtks={referenceTtks} ttkGroups={ttkGroups} onRestore={restoreBackup} onClear={() => restoreBackup({ products: [], semifinished: [], referenceTtks: [], ttkGroups: [] })} />}
         </div>
       </main>
     </div>

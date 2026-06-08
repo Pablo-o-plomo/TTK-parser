@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { SYSTEM_UNGROUPED_GROUP_ID } from './ttkGroupsStore.js'
 
 export const REFERENCE_TTK_STORAGE_KEY = 'klevo_reference_ttks'
 
@@ -39,6 +40,8 @@ export function createEmptyReferenceTtk() {
     typicalMistakes: '',
     rows: [{ ...EMPTY_ROW, id: makeRowId() }],
     files: { pdf: null, xlsx: null },
+    groupId: SYSTEM_UNGROUPED_GROUP_ID,
+    order: Date.now(),
     createdAt: now,
     updatedAt: now,
   }
@@ -75,6 +78,8 @@ export function normalizeReferenceTtk(item = {}) {
     typicalMistakes: item.typicalMistakes || '',
     rows: normalizeRows(item.rows),
     files: { pdf: item.files?.pdf || null, xlsx: item.files?.xlsx || null },
+    groupId: item.groupId || SYSTEM_UNGROUPED_GROUP_ID,
+    order: Number.isFinite(Number(item.order)) ? Number(item.order) : Date.now(),
     createdAt: item.createdAt || now,
     updatedAt: item.updatedAt || now,
   }
@@ -110,6 +115,14 @@ export function useReferenceTtkStore() {
 
   const deleteTtk = useCallback(id => persist(current => current.filter(item => item.id !== id)), [persist])
 
+  const updateTtkPlacement = useCallback((id, patch = {}) => {
+    persist(current => current.map(item => item.id === id ? normalizeReferenceTtk({ ...item, ...patch, updatedAt: nowIso() }) : item))
+  }, [persist])
+
+  const moveTtksFromGroup = useCallback((groupId, nextGroupId = SYSTEM_UNGROUPED_GROUP_ID) => {
+    persist(current => current.map(item => item.groupId === groupId ? normalizeReferenceTtk({ ...item, groupId: nextGroupId, updatedAt: nowIso() }) : item))
+  }, [persist])
+
   const duplicateTtk = useCallback(id => {
     const source = items.find(item => item.id === id)
     if (!source) return null
@@ -121,5 +134,5 @@ export function useReferenceTtkStore() {
 
   const replaceItems = useCallback(nextItems => persist((Array.isArray(nextItems) ? nextItems : []).map(normalizeReferenceTtk)), [persist])
 
-  return { items, saveTtk, deleteTtk, duplicateTtk, replaceItems }
+  return { items, saveTtk, deleteTtk, updateTtkPlacement, moveTtksFromGroup, duplicateTtk, replaceItems }
 }
