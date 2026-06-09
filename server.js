@@ -4,9 +4,11 @@ const path = require('node:path')
 
 const PORT = Number(process.env.PORT || 3000)
 const DIST_DIR = path.join(__dirname, 'dist')
+const DATA_DIR = path.join(__dirname, 'data')
+const TTK_FILE = path.join(DATA_DIR, 'reference-ttk.json')
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses'
 const DEFAULT_OPENAI_MODEL = 'gpt-5.5'
-const MAX_BODY_SIZE = 1024 * 1024
+const MAX_BODY_SIZE = 50 * 1024 * 1024
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -263,6 +265,62 @@ async function handleGenerateTtk(req, res) {
   }
 }
 
+async function ensureDataFile() {
+  await fs.mkdir(DATA_DIR, { recursive: true })
+
+  try {
+    await fs.access(TTK_FILE)
+  } catch {
+    await fs.writeFile(TTK_FILE, '[]', 'utf8')
+  }
+}
+
+async function readReferenceTtk() {
+  await ensureDataFile()
+  const raw = await fs.readFile(TTK_FILE, 'utf8')
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+async function writeReferenceTtk(items) {
+  await ensureDataFile()
+  await fs.writeFile(TTK_FILE, JSON.stringify(items, null, 2), 'utf8')
+}
+
+async function handleReferenceTtk(req, res) {
+  try {
+    if (req.method === 'GET') {
+      const items = await readReferenceTtk()
+      sendJson(res, 200, items)
+      return
+    }
+
+    if (req.method === 'POST') {
+      const rawBody = await readRequestBody(req)
+      const items = JSON.parse(rawBody || '[]')
+
+      if (!Array.isArray(items)) {
+        sendJson(res, 400, { error: 'Expected array' })
+        return
+      }
+
+      await writeReferenceTtk(items)
+      sendJson(res, 200, { ok: true })
+      return
+    }
+
+    res.writeHead(405, { Allow: 'GET, POST' })
+    res.end()
+  } catch (error) {
+    console.error('Reference TTK API error', error)
+    sendJson(res, 500, { error: 'Failed to handle reference TTK' })
+  }
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
   const pathname = decodeURIComponent(url.pathname)
@@ -288,6 +346,11 @@ async function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  if (req.url?.startsWith('/api/reference-ttk')) {
+    handleReferenceTtk(req, res)
+    return
+  }
+
   if (req.url?.startsWith('/api/generate-ttk')) {
     handleGenerateTtk(req, res)
     return

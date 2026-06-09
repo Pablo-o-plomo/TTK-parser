@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'academy_printable_reference_ttk_v1'
 const LEGACY_STORAGE_KEY = 'academy_reference_ttk_v1'
+const API_URL = '/api/reference-ttk'
 
 const EMPTY_INGREDIENT = { id: '', name: '', type: 'product', quantity: '' }
 
@@ -18,8 +19,9 @@ function parseItems(raw) {
   }
 }
 
-function readItems() {
+function readLocalItems() {
   if (!isBrowserStorageAvailable()) return []
+
   const current = localStorage.getItem(STORAGE_KEY)
   if (current) return parseItems(current)
 
@@ -29,40 +31,67 @@ function readItems() {
   return []
 }
 
-function stripHeavyPhotos(items) {
-  return items.map(item => {
-    const clean = { ...item }
-
-    if (typeof clean.image === 'string' && clean.image.startsWith('data:image/')) {
-      clean.image = ''
-    }
-
-    if (clean.photo?.dataUrl?.startsWith?.('data:image/')) {
-      clean.photo = {
-        ...clean.photo,
-        dataUrl: '',
-      }
-    }
-
-    return clean
-  })
-}
-
-function writeItems(items) {
+function writeLocalFallback(items) {
   if (!isBrowserStorageAvailable()) return
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
   } catch (error) {
-    console.warn('Ошибка сохранения ТТК. Пробуем сохранить без тяжелых фото.', error)
+    console.warn('Local fallback save failed.', error)
+  }
+}
 
+async function readServerItems() {
+  try {
+    const response = await fetch(API_URL)
+
+    if (!response.ok) {
+      throw new Error(`Server read failed: ${response.status}`)
+    }
+
+    const parsed = await response.json()
+    return Array.isArray(parsed) ? parsed.map(normalizeReferenceTtk) : []
+  } catch (error) {
+    console.warn('Failed to read TTK from server. Using localStorage fallback.', error)
+    return readLocalItems()
+  }
+}
+
+async function writeServerItems(items) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(items),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Server save failed: ${response.status}`)
+  }
+}
+
+async function loadItemsWithMigration() {
+  const serverItems = await readServerItems()
+
+  if (serverItems.length > 0) {
+    return serverItems
+  }
+
+  const localItems = readLocalItems()
+
+  if (localItems.length > 0) {
     try {
-      const lightweightItems = stripHeavyPhotos(items)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweightItems))
-    } catch (secondError) {
-      console.warn('Не удалось сохранить даже облегченную версию ТТК.', secondError)
+      await writeServerItems(localItems)
+      console.log('TTK migrated from localStorage to server storage')
+      return localItems
+    } catch (error) {
+      console.warn('Failed to migrate TTK to server. Using localStorage fallback.', error)
+      return localItems
     }
   }
+
+  return []
 }
 
 export function makeReferenceTtkId() {
@@ -125,6 +154,7 @@ function normalizeIngredients(item) {
 
 export function normalizeReferenceTtk(item = {}) {
   const now = new Date().toISOString()
+
   return {
     id: item.id || makeReferenceTtkId(),
     title: item.title || item.name || '',
@@ -148,13 +178,28 @@ export function useReferenceTtkStore() {
   const [items, setItems] = useState([])
 
   useEffect(() => {
-    setItems(readItems())
+    let cancelled = false
+
+    loadItemsWithMigration().then(loadedItems => {
+      if (!cancelled) {
+        setItems(loadedItems)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const persist = useCallback(updater => {
     setItems(current => {
       const next = typeof updater === 'function' ? updater(current) : updater
-      writeItems(next)
+
+      writeServerItems(next).catch(error => {
+        console.warn('Failed to save TTK to server. Saving local fallback.', error)
+        writeLocalFallback(next)
+      })
+
       return next
     })
   }, [])
@@ -162,18 +207,20 @@ export function useReferenceTtkStore() {
   const saveTtk = useCallback(ttk => {
     const now = new Date().toISOString()
     const normalized = normalizeReferenceTtk(ttk)
+
     const clean = {
       ...normalized,
       updatedAt: now,
       ingredients: normalized.ingredients.filter(row => row.quantity || row.name),
     }
 
-    if (clean.ingredients.length === 0) clean.ingredients = [{ ...EMPTY_INGREDIENT, id: makeIngredientId() }]
-
-    console.log('TTK SAVE PAYLOAD', clean)
+    if (clean.ingredients.length === 0) {
+      clean.ingredients = [{ ...EMPTY_INGREDIENT, id: makeIngredientId() }]
+    }
 
     persist(current => {
       const exists = current.some(item => item.id === clean.id)
+
       return exists
         ? current.map(item => item.id === clean.id ? clean : item)
         : [{ ...clean, createdAt: clean.createdAt || now }, ...current]
@@ -187,10 +234,11 @@ export function useReferenceTtkStore() {
   }, [persist])
 
   const duplicateTtk = useCallback(id => {
-    const source = readItems().find(item => item.id === id)
+    const source = items.find(item => item.id === id)
     if (!source) return null
 
     const now = new Date().toISOString()
+
     const copy = {
       ...source,
       id: makeReferenceTtkId(),
@@ -202,7 +250,7 @@ export function useReferenceTtkStore() {
 
     persist(current => [copy, ...current])
     return copy
-  }, [persist])
+  }, [items, persist])
 
   return { items, saveTtk, deleteTtk, duplicateTtk }
 }
