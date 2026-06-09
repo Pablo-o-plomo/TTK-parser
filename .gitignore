@@ -4,3 +4,6 @@ dist/
 .env.local
 .DS_Store
 *.log
+
+data/reference-ttk.json
+src/hooks/useReferenceTtk.backup.js
