@@ -29,9 +29,40 @@ function readItems() {
   return []
 }
 
+function stripHeavyPhotos(items) {
+  return items.map(item => {
+    const clean = { ...item }
+
+    if (typeof clean.image === 'string' && clean.image.startsWith('data:image/')) {
+      clean.image = ''
+    }
+
+    if (clean.photo?.dataUrl?.startsWith?.('data:image/')) {
+      clean.photo = {
+        ...clean.photo,
+        dataUrl: '',
+      }
+    }
+
+    return clean
+  })
+}
+
 function writeItems(items) {
   if (!isBrowserStorageAvailable()) return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+  } catch (error) {
+    console.warn('Ошибка сохранения ТТК. Пробуем сохранить без тяжелых фото.', error)
+
+    try {
+      const lightweightItems = stripHeavyPhotos(items)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweightItems))
+    } catch (secondError) {
+      console.warn('Не удалось сохранить даже облегченную версию ТТК.', secondError)
+    }
+  }
 }
 
 export function makeReferenceTtkId() {
